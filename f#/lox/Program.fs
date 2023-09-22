@@ -3,10 +3,15 @@
 open System.IO
 open System
 
+
+
+
 module cli =
     let run source =
         let scanner: Scanner = Scanner(source)
-        scanner.scanTokens () |> Seq.iter (printfn "%s")
+        scanner.scanTokens () |> Seq.iter (printfn "%A")
+
+
 
     let runFile (file: string) = File.ReadAllText file |> run
 

@@ -4,7 +4,8 @@
     <TargetFramework>net7.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="scanner.fs" />
+    <Compile Include="TokenType.fs" />
+    <Compile Include="Scanner.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 </Project>
