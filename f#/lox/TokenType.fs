@@ -1,5 +1,7 @@
 namespace lox
 
+open System
+
 type TokenType =
 
     // Single-character tokens.
@@ -55,3 +57,12 @@ type Token =
       lexeme: string
       literal: obj
       line: int }
+
+    override x.ToString() =
+        let literalStr =
+            match x.literal with
+            | null -> "null"
+            | :? double as number when Double.IsInteger(number) -> sprintf "%.1f" number
+            | other -> other.ToString()
+
+        $"{x.tokenType} {x.lexeme} {literalStr}"

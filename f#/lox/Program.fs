@@ -9,7 +9,7 @@ open System
 module cli =
     let run source =
         let scanner: Scanner = Scanner(source)
-        scanner.scanTokens () |> Seq.iter (printfn "%A")
+        scanner.scanTokens () |> Seq.iter (fun tk -> printfn "%s" (tk.ToString()))
 
 
 
