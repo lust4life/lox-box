@@ -26,82 +26,75 @@ type Parser(tokens: Token list) =
         else
             raise (ParseError(currentToken (), msg))
 
-
-module parser =
-    type ParserState = { tokens: Token list; current: int }
-
-
-    let currentToken (state: ParserState) =
-        let tk = state.tokens[state.current]
-        tk
-
-    let advance (state: ParserState) =
-        { state with
-            current = state.current + 1 }
-
-    let check (state: ParserState) tokenType =
-        let ct = currentToken state
-        ct.tokenType = tokenType
-
-    let consume (state: ParserState) tokenType msg =
-        if check state tokenType then
-            advance state
-        else
-            raise (ParseError(currentToken state, msg))
-
-    let advanceIfMatch (state: ParserState) (types: TokenType list) =
-        let ct = currentToken state
+    let advanceIfMatch (types: TokenType list) =
+        let ct = currentToken ()
 
         types
         |> List.tryFind (fun x -> x = ct.tokenType)
-        |> Option.map (fun _ -> ct, advance state)
+        |> Option.map (fun _ ->
+            advance ()
+            ct)
 
+    let rec expression () = equality ()
 
-    let rec expression (state: ParserState) = equality state
-
-    and tryMakeBinary left checkTypes rightMaker state =
-        match advanceIfMatch state checkTypes with
-        | Some(operator, state) ->
-            let right = rightMaker state
+    and tryMakeBinary left checkTypes rightMaker =
+        match advanceIfMatch checkTypes with
+        | Some operator ->
+            let right = rightMaker ()
             let expr = Binary(left, operator, right)
-            tryMakeBinary expr checkTypes rightMaker state
+            tryMakeBinary expr checkTypes rightMaker
         | None -> left
 
-    and equality (state: ParserState) : Expr =
-        let left = comparison state
-        tryMakeBinary left [ BANG_EQUAL; EQUAL_EQUAL ] comparison state
+    and equality () =
+        let left = comparison ()
+        tryMakeBinary left [ BANG_EQUAL; EQUAL_EQUAL ] comparison
 
-    and comparison (state: ParserState) =
-        let left = term state
-        tryMakeBinary left [ GREATER; GREATER_EQUAL; LESS; LESS_EQUAL ] term state
+    and comparison () =
+        let left = term ()
+        tryMakeBinary left [ GREATER; GREATER_EQUAL; LESS; LESS_EQUAL ] term
 
-    and term (state: ParserState) =
-        let left = factor state
-        tryMakeBinary left [ MINUS; PLUS ] factor state
+    and term () =
+        let left = factor ()
+        tryMakeBinary left [ MINUS; PLUS ] factor
 
-    and factor (state: ParserState) =
-        let left = unary state
-        tryMakeBinary left [ SLASH; STAR ] unary state
+    and factor () =
+        let left = unary ()
+        tryMakeBinary left [ SLASH; STAR ] unary
 
-    and unary (state: ParserState) =
-        match advanceIfMatch state [ BANG; MINUS ] with
-        | Some(tk, state) ->
-            let right = unary state
-            Unary(tk, right)
-        | None -> primary state
+    and unary () =
+        match advanceIfMatch [ BANG; MINUS ] with
+        | Some operator ->
+            let right = unary ()
+            Unary(operator, right)
+        | None -> primary ()
 
-    and primary (state: ParserState) =
-        let token = currentToken state
-        let tokenType = token.tokenType
+    and primary () =
+        let ct = currentToken ()
+        let tokenType = ct.tokenType
 
         match tokenType with
-        | TRUE -> Literal(true)
-        | FALSE -> Literal(false)
-        | NIL -> Literal(null)
+        | TRUE ->
+            advance ()
+            Literal(true)
+        | FALSE ->
+            advance ()
+            Literal(false)
+        | NIL ->
+            advance ()
+            Literal(null)
         | NUMBER
-        | STRING -> Literal(token.literal)
+        | STRING ->
+            advance ()
+            Literal(ct.literal)
         | LEFT_PAREN ->
-            let expr = expression state
-            consume state RIGHT_BRACE "Expect ')' after expression." |> ignore
+            advance ()
+            let expr = expression ()
+            consume RIGHT_BRACE "Expect ')' after expression."
             Grouping(expr)
-        | _ -> raise (ParseError(token, "Expect expression."))
+        | _ -> raise (ParseError(ct, "Expect expression."))
+
+    member x.parse() =
+        try
+            Some(expression ())
+        with ParseError(tk, msg) ->
+            None

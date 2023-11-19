@@ -3,12 +3,15 @@
 open System.IO
 open System
 open lox.scanner
+open lox.parser
 
 module cli =
     let run source =
         let scanner = Scanner(source)
-        scanner.scanTokens () |> Seq.iter (fun tk -> printfn "%s" (tk.ToString()))
-
+        // scanner.scanTokens () |> Seq.iter (fun tk -> printfn "%s" (tk.ToString()))
+        let tks = scanner.scanTokens ()
+        let parser = Parser(tks |> Seq.toList)
+        parser.parse () |> printfn "%A"
 
 
     let runFile (file: string) = File.ReadAllText file |> run
