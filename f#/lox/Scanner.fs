@@ -1,14 +1,9 @@
-namespace lox
+namespace rec lox.scanner
 
-module Scanner =
-    let report line where message =
-        printfn "[line %d] Error %s:%s" line where message
-
-
-open Scanner
+open lox.token
 open System
+open scanner
 
-open System.Text.RegularExpressions
 
 type Scanner(source: string) =
     let mutable eachStart = 0
@@ -156,3 +151,7 @@ type Scanner(source: string) =
                   literal = null
                   line = line }
         }
+
+module scanner =
+    let report line where message =
+        printfn "[line %d] Error %s:%s" line where message

@@ -1,4 +1,4 @@
-namespace lox
+namespace lox.token
 
 open System
 

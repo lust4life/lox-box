@@ -1,4 +1,6 @@
-namespace lox
+namespace lox.expr
+
+open lox.token
 
 type Expr =
     | Binary of left: Expr * operator: Token * right: Expr

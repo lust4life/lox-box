@@ -2,13 +2,11 @@
 
 open System.IO
 open System
-
-
-
+open lox.scanner
 
 module cli =
     let run source =
-        let scanner: Scanner = Scanner(source)
+        let scanner = Scanner(source)
         scanner.scanTokens () |> Seq.iter (fun tk -> printfn "%s" (tk.ToString()))
 
 
