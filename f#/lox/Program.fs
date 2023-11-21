@@ -4,6 +4,7 @@ open System.IO
 open System
 open lox.scanner
 open lox.parser
+open lox.interpreter
 
 module cli =
     let run source =
@@ -11,7 +12,11 @@ module cli =
         // scanner.scanTokens () |> Seq.iter (fun tk -> printfn "%s" (tk.ToString()))
         let tks = scanner.scanTokens ()
         let parser = Parser(tks |> Seq.toList)
-        parser.parse () |> printfn "%A"
+        // parser.parse () |> printfn "%A"
+        parser.parse ()
+        |> Option.map interpreter.evaluate
+        |> printfn "%s => result is %A" source
+
 
 
     let runFile (file: string) = File.ReadAllText file |> run

@@ -6,6 +6,7 @@
   <ItemGroup>
     <Compile Include="TokenType.fs" />
     <Compile Include="Expr.fs" />
+    <Compile Include="Interpreter.fs" />
     <Compile Include="Scanner.fs" />
     <Compile Include="Parser.fs" />
     <Compile Include="Program.fs" />
