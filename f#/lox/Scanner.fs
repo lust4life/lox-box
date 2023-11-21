@@ -1,9 +1,8 @@
-namespace rec lox.scanner
+namespace lox.scanner
 
 open lox.token
 open System
-open scanner
-
+open lox
 
 type Scanner(source: string) =
     let mutable eachStart = 0
@@ -77,7 +76,7 @@ type Scanner(source: string) =
                 let literalStr = source[eachStart + 1 .. current - 1]
                 yield token STRING literalStr
             else
-                report line "" "Unterminated string."
+                lox.errorWithLine line "Unterminated string."
         }
 
     let isDigital char = char >= '0' && char <= '9'
@@ -141,7 +140,7 @@ type Scanner(source: string) =
                 | '"' -> yield! handleString ()
                 | char when isDigital char -> yield handleNumber ()
                 | char when isAlpha char -> yield handleKeywordsAndIdentifier ()
-                | _ -> report line "" "Unexpected character."
+                | _ -> lox.errorWithLine line "Unexpected character."
 
                 advance ()
 
@@ -151,7 +150,3 @@ type Scanner(source: string) =
                   literal = null
                   line = line }
         }
-
-module scanner =
-    let report line where message =
-        printfn "[line %d] Error %s:%s" line where message

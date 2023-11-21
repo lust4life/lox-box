@@ -13,13 +13,18 @@ module cli =
         let tks = scanner.scanTokens ()
         let parser = Parser(tks |> Seq.toList)
         // parser.parse () |> printfn "%A"
-        parser.parse ()
-        |> Option.map interpreter.evaluate
-        |> printfn "%s => result is %A" source
+        parser.parse () |> Option.map interpreter.interpret |> ignore
 
 
 
-    let runFile (file: string) = File.ReadAllText file |> run
+    let runFile (file: string) =
+        File.ReadAllText file |> run
+
+        if lox.hadError then
+            exit 65
+
+        if lox.hadRuntimeError then
+            exit 70
 
     let runPrompt () =
         let mutable keepGoing = true

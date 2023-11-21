@@ -1,5 +1,6 @@
 namespace lox.parser
 
+open lox
 open lox.token
 open lox.expr
 
@@ -20,11 +21,15 @@ type Parser(tokens: Token list) =
         let ct = currentToken ()
         ct.tokenType = tokenType
 
+    let parseError token msg =
+        lox.error token msg
+        ParseError(token, msg)
+
     let consume tokenType msg =
         if check tokenType then
             advance ()
         else
-            raise (ParseError(currentToken (), msg))
+            raise (parseError (currentToken ()) msg)
 
     let advanceIfMatch (types: TokenType list) =
         let ct = currentToken ()
@@ -91,7 +96,7 @@ type Parser(tokens: Token list) =
             let expr = expression ()
             consume RIGHT_BRACE "Expect ')' after expression."
             Grouping(expr)
-        | _ -> raise (ParseError(ct, "Expect expression."))
+        | _ -> raise (parseError ct "Expect expression.")
 
     member x.parse() =
         try

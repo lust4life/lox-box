@@ -1,5 +1,6 @@
 namespace lox.interpreter
 
+open lox
 open lox.expr
 open lox.token
 
@@ -23,8 +24,13 @@ type Interpreter() =
     override x.visitUnary(operator, right) =
         let rightValue = x.visit (right)
 
+
         match operator.tokenType with
-        | MINUS -> -(downcast rightValue)
+        | MINUS ->
+            if rightValue :? double then
+                -(downcast rightValue)
+            else
+                raise (RuntimeError(operator, "Operand must be a number."))
         | BANG -> not (castTruthy rightValue)
         | x -> failwithf "not support %A" x
 
@@ -32,31 +38,49 @@ type Interpreter() =
         let leftVal = x.visit (left)
         let rightVal = x.visit (right)
 
-        let doWithCast operator =
-            operator (leftVal :?> double) (rightVal :?> double) |> box
+        let doWithNumberCast operatorFunc =
+            match leftVal, rightVal with
+            | :? double as ln, (:? double as rn) -> operatorFunc ln rn |> box
+            | _ -> raise (RuntimeError(operator, "Operands must be numbers."))
 
         let doPlus () =
             match leftVal, rightVal with
             | :? string as ls, (:? string as rs) -> ls + rs |> box
             | :? double as ln, (:? double as rn) -> ln + rn |> box
-            | _ -> failwithf "not support + with %A %A" leftVal rightVal
+            | _ -> raise (RuntimeError(operator, "Operands must be two numbers or two strings."))
 
         match operator.tokenType with
         | BANG_EQUAL -> not (isEqual leftVal rightVal)
         | EQUAL_EQUAL -> isEqual leftVal rightVal
-        | GREATER -> doWithCast (>)
-        | GREATER_EQUAL -> doWithCast (>=)
-        | LESS -> doWithCast (<)
-        | LESS_EQUAL -> doWithCast (<=)
-        | MINUS -> doWithCast (-)
+        | GREATER -> doWithNumberCast (>)
+        | GREATER_EQUAL -> doWithNumberCast (>=)
+        | LESS -> doWithNumberCast (<)
+        | LESS_EQUAL -> doWithNumberCast (<=)
+        | MINUS -> doWithNumberCast (-)
         | PLUS -> doPlus ()
-        | SLASH -> doWithCast (/)
-        | STAR -> doWithCast (*)
+        | SLASH -> doWithNumberCast (/)
+        | STAR -> doWithNumberCast (*)
         | x -> failwithf "not support %A" x
 
 
 module interpreter =
 
-    let evaluate (expr: Expr) =
+    let stringify (value: obj) =
+        match value with
+        | null -> "nil"
+        | :? double as number ->
+            let numberStr = string number
+
+            if numberStr.EndsWith(".0") then
+                numberStr.Substring(0, numberStr.Length - 2)
+            else
+                numberStr
+        | _ -> value.ToString()
+
+    let interpret (expr: Expr) =
         let interpreter = Interpreter()
-        interpreter.visit (expr)
+
+        try
+            interpreter.visit (expr) |> stringify |> printfn "%s"
+        with :? RuntimeError as error ->
+            lox.runtimeError error

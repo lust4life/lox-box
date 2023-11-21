@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="TokenType.fs" />
+    <Compile Include="Lox.fs" />
     <Compile Include="Expr.fs" />
     <Compile Include="Interpreter.fs" />
     <Compile Include="Scanner.fs" />
