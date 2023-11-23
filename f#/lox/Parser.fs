@@ -3,6 +3,7 @@ namespace lox.parser
 open lox
 open lox.token
 open lox.expr
+open lox.stmt
 
 exception ParseError of Token * string
 
@@ -40,7 +41,18 @@ type Parser(tokens: Token list) =
             advance ()
             ct)
 
-    let rec expression () = equality ()
+    let rec statement () =
+        match advanceIfMatch [ PRINT ] with
+        | Some _ ->
+            let expr = expression ()
+            consume SEMICOLON "Expect ';' after value."
+            Print(expr)
+        | None ->
+            let expr = expression ()
+            consume SEMICOLON "Expect ';' after expression."
+            Expression(expr)
+
+    and expression () = equality ()
 
     and tryMakeBinary left checkTypes rightMaker =
         match advanceIfMatch checkTypes with
@@ -99,7 +111,12 @@ type Parser(tokens: Token list) =
         | _ -> raise (parseError ct "Expect expression.")
 
     member x.parse() =
-        try
-            Some(expression ())
-        with ParseError(tk, msg) ->
-            None
+        seq {
+            while not (isAtEnd ()) do
+                yield (statement ())
+        }
+
+// try
+//     Some(expression ())
+// with ParseError(tk, msg) ->
+//     None

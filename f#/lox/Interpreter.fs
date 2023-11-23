@@ -3,10 +3,9 @@ namespace lox.interpreter
 open lox
 open lox.expr
 open lox.token
+open lox.stmt
 
 type Interpreter() =
-    inherit ExprVisitor<obj>()
-
     let castTruthy (value: obj) =
         match value with
         | null -> false
@@ -19,51 +18,52 @@ type Interpreter() =
         | null, _ -> false
         | _ -> left = right
 
-    override x.visitLiteral value = value
+    let exprVisitor =
+        { new ExprVisitor<obj>() with
+            override x.visitLiteral value = value
 
-    override x.visitUnary(operator, right) =
-        let rightValue = x.visit (right)
-
-
-        match operator.tokenType with
-        | MINUS ->
-            if rightValue :? double then
-                -(downcast rightValue)
-            else
-                raise (RuntimeError(operator, "Operand must be a number."))
-        | BANG -> not (castTruthy rightValue)
-        | x -> failwithf "not support %A" x
-
-    override x.visitBinary(left, operator, right) =
-        let leftVal = x.visit (left)
-        let rightVal = x.visit (right)
-
-        let doWithNumberCast operatorFunc =
-            match leftVal, rightVal with
-            | :? double as ln, (:? double as rn) -> operatorFunc ln rn |> box
-            | _ -> raise (RuntimeError(operator, "Operands must be numbers."))
-
-        let doPlus () =
-            match leftVal, rightVal with
-            | :? string as ls, (:? string as rs) -> ls + rs |> box
-            | :? double as ln, (:? double as rn) -> ln + rn |> box
-            | _ -> raise (RuntimeError(operator, "Operands must be two numbers or two strings."))
-
-        match operator.tokenType with
-        | BANG_EQUAL -> not (isEqual leftVal rightVal)
-        | EQUAL_EQUAL -> isEqual leftVal rightVal
-        | GREATER -> doWithNumberCast (>)
-        | GREATER_EQUAL -> doWithNumberCast (>=)
-        | LESS -> doWithNumberCast (<)
-        | LESS_EQUAL -> doWithNumberCast (<=)
-        | MINUS -> doWithNumberCast (-)
-        | PLUS -> doPlus ()
-        | SLASH -> doWithNumberCast (/)
-        | STAR -> doWithNumberCast (*)
-        | x -> failwithf "not support %A" x
+            override x.visitUnary(operator, right) =
+                let rightValue = x.visit (right)
 
 
-module interpreter =
+                match operator.tokenType with
+                | MINUS ->
+                    if rightValue :? double then
+                        -(downcast rightValue)
+                    else
+                        raise (RuntimeError(operator, "Operand must be a number."))
+                | BANG -> not (castTruthy rightValue)
+                | x -> failwithf "not support %A" x
+
+            override x.visitBinary(left, operator, right) =
+                let leftVal = x.visit (left)
+                let rightVal = x.visit (right)
+
+                let doWithNumberCast operatorFunc =
+                    match leftVal, rightVal with
+                    | :? double as ln, (:? double as rn) -> operatorFunc ln rn |> box
+                    | _ -> raise (RuntimeError(operator, "Operands must be numbers."))
+
+                let doPlus () =
+                    match leftVal, rightVal with
+                    | :? string as ls, (:? string as rs) -> ls + rs |> box
+                    | :? double as ln, (:? double as rn) -> ln + rn |> box
+                    | _ -> raise (RuntimeError(operator, "Operands must be two numbers or two strings."))
+
+                match operator.tokenType with
+                | BANG_EQUAL -> not (isEqual leftVal rightVal)
+                | EQUAL_EQUAL -> isEqual leftVal rightVal
+                | GREATER -> doWithNumberCast (>)
+                | GREATER_EQUAL -> doWithNumberCast (>=)
+                | LESS -> doWithNumberCast (<)
+                | LESS_EQUAL -> doWithNumberCast (<=)
+                | MINUS -> doWithNumberCast (-)
+                | PLUS -> doPlus ()
+                | SLASH -> doWithNumberCast (/)
+                | STAR -> doWithNumberCast (*)
+                | x -> failwithf "not support %A" x }
+
+    let evaluate = exprVisitor.visit
 
     let stringify (value: obj) =
         match value with
@@ -77,10 +77,17 @@ module interpreter =
                 numberStr
         | _ -> value.ToString()
 
-    let interpret (expr: Expr) =
-        let interpreter = Interpreter()
+    let stmtVisitor =
+        { new StmtVisitor() with
+            override x.visitExpression expr = evaluate expr |> ignore
 
+            override x.visitPrint expr =
+                evaluate expr |> stringify |> printfn "%s" }
+
+    let execute = stmtVisitor.visit
+
+    member x.interpret(stmts: Stmt seq) =
         try
-            interpreter.visit (expr) |> stringify |> printfn "%s"
+            stmts |> Seq.iter execute
         with :? RuntimeError as error ->
             lox.runtimeError error

@@ -12,8 +12,9 @@ module cli =
         // scanner.scanTokens () |> Seq.iter (fun tk -> printfn "%s" (tk.ToString()))
         let tks = scanner.scanTokens ()
         let parser = Parser(tks |> Seq.toList)
+        let interpreter = new Interpreter()
         // parser.parse () |> printfn "%A"
-        parser.parse () |> Option.map interpreter.interpret |> ignore
+        parser.parse () |> interpreter.interpret
 
 
 
