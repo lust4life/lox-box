@@ -4,8 +4,12 @@ open lox
 open lox.expr
 open lox.token
 open lox.stmt
+open lox.env
 
 type Interpreter() =
+    let env = Environment()
+
+
     let castTruthy (value: obj) =
         match value with
         | null -> false
@@ -60,7 +64,13 @@ type Interpreter() =
                 | PLUS -> doPlus ()
                 | SLASH -> doWithNumberCast (/)
                 | STAR -> doWithNumberCast (*)
-                | x -> failwithf "not support %A" x }
+                | x -> failwithf "not support %A" x
+
+            override x.visitVariable name = env.get name
+
+        }
+
+
 
     let evaluate = exprVisitor.visit
 
@@ -85,9 +95,8 @@ type Interpreter() =
 
             override x.visitVarDeclar name expr =
                 let initializer = expr |> Option.map evaluate
-                ()
-
-        }
+                let value = initializer |> Option.defaultValue null
+                env.define name value }
 
     let execute = stmtVisitor.visit
 

@@ -65,7 +65,6 @@ module cli =
             | RegEx "chap04" _ -> testChap04 source
             | RegEx "chap06" _ -> testChap06 source
             | RegEx "chap07" _ -> testChap07 source
-            | RegEx "chap08" _ -> run source
             | _ -> failwithf "not support test %s" suiteName
         | None -> run source
 

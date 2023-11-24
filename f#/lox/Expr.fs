@@ -17,11 +17,12 @@ type ExprVisitor<'R>() =
         | Grouping(expression) -> x.visitGrouping (expression)
         | Literal value -> x.visitLiteral value
         | Unary(operator, right) -> x.visitUnary (operator, right)
-        | Variable(_) -> failwith "Not Implemented for visitVariable"
+        | Variable name -> x.visitVariable name
 
     abstract visitLiteral: obj -> 'R
     abstract visitUnary: Token * Expr -> 'R
     abstract visitBinary: Expr * Token * Expr -> 'R
+    abstract visitVariable: Token -> 'R
 
     abstract visitGrouping: Expr -> 'R
     default x.visitGrouping expr = x.visit expr
