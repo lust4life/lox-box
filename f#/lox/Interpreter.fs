@@ -7,7 +7,7 @@ open lox.stmt
 open lox.env
 
 type Interpreter() =
-    let env = Environment()
+    let mutable env = Environment()
 
 
     let castTruthy (value: obj) =
@@ -75,8 +75,6 @@ type Interpreter() =
 
         }
 
-
-
     let evaluate = exprVisitor.visit
 
     let stringify (value: obj) =
@@ -89,6 +87,7 @@ type Interpreter() =
                 numberStr.Substring(0, numberStr.Length - 2)
             else
                 numberStr
+        | :? bool as value -> value.ToString().ToLower()
         | _ -> value.ToString()
 
     let stmtVisitor =
@@ -101,7 +100,18 @@ type Interpreter() =
             override x.visitVarDeclar name expr =
                 let initializer = expr |> Option.map evaluate
                 let value = initializer |> Option.defaultValue null
-                env.define name value }
+                env.define name value
+
+            override x.visitBlock stmts =
+                let previousEnv = env
+
+                try
+                    env <- Environment(Some env)
+
+                    for stmt in stmts do
+                        x.visit stmt
+                finally
+                    env <- previousEnv }
 
     let execute = stmtVisitor.visit
 

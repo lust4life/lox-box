@@ -4,8 +4,10 @@ open System.Collections.Generic
 open lox
 open lox.token
 
-type Environment() =
+type Environment(enclosing: Environment option) =
     let infos = Dictionary<string, obj>()
+
+    new() = Environment(None)
 
     member x.define (name: Token) value = infos[name.lexeme] <- value
 
@@ -14,11 +16,17 @@ type Environment() =
 
         match infos.TryGetValue key with
         | true, value -> value
-        | _ -> raise (RuntimeError(name, $"Undefined variable '{key}'."))
+        | _ ->
+            match enclosing with
+            | Some enclosing -> enclosing.get name
+            | None -> raise (RuntimeError(name, $"Undefined variable '{key}'."))
 
     member x.assign name value =
         let key = name.lexeme
 
         match infos.ContainsKey key with
         | true -> infos[key] <- value
-        | _ -> raise (RuntimeError(name, $"Undefined variable '{key}'."))
+        | _ ->
+            match enclosing with
+            | Some enclosing -> enclosing.assign name value
+            | None -> raise (RuntimeError(name, $"Undefined variable '{key}'."))

@@ -120,7 +120,19 @@ type Parser(tokens: Token list) =
         | _ -> raiseParseError ct "Expect expression."
 
     and statement () =
-        printStmt () |> Option.defaultWith exprStmt
+        printStmt () |> Option.orElseWith block |> Option.defaultWith exprStmt
+
+    and block () =
+        advanceIfMatch [ LEFT_BRACE ]
+        |> Option.map (fun _ ->
+            let stmts =
+                [ while not (isAtEnd ()) && not (isMatch RIGHT_BRACE) do
+                      match declaration () with
+                      | Some stmt -> yield stmt
+                      | None -> () ]
+
+            consume RIGHT_BRACE "Expect '}' after block." |> ignore
+            Block(stmts))
 
     and exprStmt () =
         let expr = expression ()

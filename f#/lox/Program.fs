@@ -28,14 +28,11 @@ module cli =
 
     let run source =
         let scanner = Scanner(source)
-        // scanner.scanTokens () |> Seq.iter (fun tk -> printfn "%s" (tk.ToString()))
-        let tks = scanner.scanTokens ()
-        let parser = Parser(tks |> Seq.toList)
-        let interpreter = new Interpreter()
-        // parser.parse () |> printfn "%A"
+        let parser = Parser(scanner.scanTokens () |> Seq.toList)
         let parseRes = parser.parse () |> Seq.toList
 
         if not lox.hadError then
+            let interpreter = new Interpreter()
             parseRes |> interpreter.interpret
 
     let testChap04 source =
@@ -99,13 +96,3 @@ module cli =
         | _ -> runPrompt ()
 
         0
-// match args with
-// | [| file |] ->
-//     runFile file
-//     0
-// | [||] ->
-//     runPrompt ()
-//     0
-// | _ ->
-//     printfn "Usage: lox [script]"
-//     64
