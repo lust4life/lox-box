@@ -54,11 +54,17 @@ type Scanner(source: string) =
         checkIndex (current + 1) (fun next -> next = one)
 
     let advanceTill terminator =
-        while not (matchNext terminator) && not (ended current) do
+        let mutable stop = false
+
+        while not stop && not (ended current) do
+            if matchNext terminator then
+                stop <- true
+
             if currentChar () = '\n' then
                 line <- line + 1
 
-            advance ()
+            if not stop then
+                advance ()
 
     let handleOneMore next ifT notT =
         if matchNext next then

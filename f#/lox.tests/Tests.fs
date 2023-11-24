@@ -11,7 +11,7 @@ module tests =
         let scanner = Scanner(code)
         let parser = Parser(scanner.scanTokens () |> Seq.toList)
         let interpret = Interpreter()
-        parser.parseExpr () |> interpret.evaluateExprAndPrint
+        parser.parse () |> interpret.interpret
 
     [<Tests>]
     let tests =
@@ -21,5 +21,11 @@ module tests =
               <| fun _ ->
                   parse
                   <| """
-                    -1
+                    // Tests that we correctly track the line info across multiline strings.
+                    var a = "1
+                    2
+                    3
+                    ";
+                    
+                    err; // // expect runtime error: Undefined variable 'err'.
                     """ ]

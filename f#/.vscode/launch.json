@@ -9,8 +9,8 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}/bin/Debug/net7.0/lox.dll",
-            "args": ["../../craftinginterpreters/test/scanning/numbers.lox"],
+            "program": "${workspaceFolder}/lox/bin/Debug/net7.0/lox.dll",
+            "args": ["lox/test.lox"],
             "cwd": "${workspaceFolder}",
             "stopAtEntry": false,
             "console": "internalConsole"
