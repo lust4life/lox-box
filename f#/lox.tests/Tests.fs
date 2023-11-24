@@ -3,14 +3,24 @@ namespace lox.tests
 open Expecto
 
 module tests =
+    open lox.parser
+    open lox.scanner
+
+    let parse code =
+        let scanner = Scanner(code)
+        let parser = Parser(scanner.scanTokens () |> Seq.toList)
+        parser.parse ()
 
     [<Tests>]
     let tests =
         testList
-            "samples"
-            [ testCase "universe exists (╭ರᴥ•́)"
+            "parser"
+            [ testCase "xx"
               <| fun _ ->
-                  let subject = true
-                  Expect.isTrue subject "I compute, therefore I am."
+                  let stmts =
+                      parse
+                      <| """
+                         print 1+2;
+                         """
 
-              ]
+                  stmts |> printfn "%A" ]

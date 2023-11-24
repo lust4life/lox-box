@@ -42,6 +42,8 @@ type Parser(tokens: Token list) =
         while not (isAtEnd ()) && (currentToken().tokenType <> SEMICOLON) do
             advance ()
 
+        advance ()
+
 
     let rec expression () = equality ()
 
@@ -109,22 +111,22 @@ type Parser(tokens: Token list) =
 
     and exprStmt () =
         let expr = expression ()
-        consume SEMICOLON "Expect ';' after value." |> ignore
-        Print(expr)
+        consume SEMICOLON "Expect ';' after expression." |> ignore
+        Expression(expr)
 
     and printStmt () =
         advanceIfMatch [ PRINT ]
         |> Option.map (fun _ ->
             let expr = expression ()
-            consume SEMICOLON "Expect ';' after expression." |> ignore
-            Expression(expr))
+            consume SEMICOLON "Expect ';' after value." |> ignore
+            Print(expr))
 
     and declaration () =
         try
-            varDecl () |> Option.defaultWith statement
+            varDecl () |> Option.defaultWith statement |> Some
         with ParseError(_, _) ->
             synchronize ()
-            failwith "what to do after synchronize?"
+            None
 
     and varDecl () =
         advanceIfMatch [ VAR ]
@@ -140,5 +142,7 @@ type Parser(tokens: Token list) =
     member x.parse() =
         seq {
             while not (isAtEnd ()) do
-                yield (declaration ())
+                match declaration () with
+                | Some stmt -> yield stmt
+                | None -> ()
         }

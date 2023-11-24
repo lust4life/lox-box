@@ -14,7 +14,10 @@ module cli =
         let parser = Parser(tks |> Seq.toList)
         let interpreter = new Interpreter()
         // parser.parse () |> printfn "%A"
-        parser.parse () |> interpreter.interpret
+        let parseRes = parser.parse () |> Seq.toList
+
+        if not lox.hadError then
+            parseRes |> interpreter.interpret
 
 
 

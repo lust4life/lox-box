@@ -12,8 +12,6 @@ type Stmt =
 [<AbstractClass>]
 type StmtVisitor() =
     member x.visit(stmt: Stmt) =
-        printfn "visit => %A" stmt
-
         match stmt with
         | Print expr -> x.visitPrint expr
         | Expression expr -> x.visitExpression expr
