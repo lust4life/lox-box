@@ -22,7 +22,8 @@ type AstPrinter() =
                 parenthesize operator.lexeme [ left; right ]
 
             override x.visitGrouping expr = parenthesize "group" [ expr ]
-            override x.visitVariable name = name.lexeme }
+            override x.visitVariable name = name.lexeme
+            override x.visitAssign(name, value) = failwith "not impl" }
 
     and parenthesize name exprs =
         seq {

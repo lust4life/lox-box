@@ -68,6 +68,11 @@ type Interpreter() =
 
             override x.visitVariable name = env.get name
 
+            override x.visitAssign(name, expr) =
+                let value = x.visit expr
+                env.assign name value
+                value
+
         }
 
 

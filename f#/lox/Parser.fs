@@ -22,9 +22,9 @@ type Parser(tokens: Token list) =
         let ct = currentToken ()
         ct.tokenType = tokenType
 
-    let parseError token msg =
+    let raiseParseError token msg =
         lox.error token msg
-        ParseError(token, msg)
+        raise (ParseError(token, msg))
 
     let advanceIfMatch (types: TokenType list) =
         types
@@ -34,9 +34,17 @@ type Parser(tokens: Token list) =
             advance ()
             ct)
 
+    let rec tryMakeBinary left checkTypes rightMaker =
+        match advanceIfMatch checkTypes with
+        | Some operator ->
+            let right = rightMaker ()
+            let expr: Expr = Binary(left, operator, right)
+            tryMakeBinary expr checkTypes rightMaker
+        | None -> left
+
     let consume tokenType msg =
         advanceIfMatch [ tokenType ]
-        |> Option.defaultWith (fun _ -> raise (parseError (currentToken ()) msg))
+        |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) msg)
 
     let synchronize () =
         while not (isAtEnd ()) && (currentToken().tokenType <> SEMICOLON) do
@@ -45,15 +53,20 @@ type Parser(tokens: Token list) =
         advance ()
 
 
-    let rec expression () = equality ()
+    let rec expression () = assignment ()
 
-    and tryMakeBinary left checkTypes rightMaker =
-        match advanceIfMatch checkTypes with
-        | Some operator ->
-            let right = rightMaker ()
-            let expr = Binary(left, operator, right)
-            tryMakeBinary expr checkTypes rightMaker
-        | None -> left
+    and assignment () =
+        // we need to take = as an binary operator, as we can't forseen the later assign operator
+        let lv = equality ()
+
+        match advanceIfMatch [ EQUAL ] with
+        | Some equalTk ->
+            match lv with
+            | Variable name ->
+                let rv = assignment ()
+                Assign(name, rv)
+            | _ -> raiseParseError equalTk "Invalid assignment target."
+        | None -> lv
 
     and equality () =
         let left = comparison ()
@@ -104,7 +117,7 @@ type Parser(tokens: Token list) =
         | IDENTIFIER ->
             advance ()
             Variable(ct)
-        | _ -> raise (parseError ct "Expect expression.")
+        | _ -> raiseParseError ct "Expect expression."
 
     and statement () =
         printStmt () |> Option.defaultWith exprStmt

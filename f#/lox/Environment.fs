@@ -15,3 +15,10 @@ type Environment() =
         match infos.TryGetValue key with
         | true, value -> value
         | _ -> raise (RuntimeError(name, $"Undefined variable '{key}'."))
+
+    member x.assign name value =
+        let key = name.lexeme
+
+        match infos.ContainsKey key with
+        | true -> infos[key] <- value
+        | _ -> raise (RuntimeError(name, $"Undefined variable '{key}'."))
