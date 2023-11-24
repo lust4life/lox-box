@@ -1,6 +1,7 @@
 source https://api.nuget.org/v3/index.json
 
 storage: none
+nuget Argu
 nuget Expecto
 nuget Microsoft.NET.Test.Sdk
 nuget YoloDev.Expecto.TestSdk
