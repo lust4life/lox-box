@@ -18,7 +18,7 @@ type Parser(tokens: Token list) =
         if (not (isAtEnd ())) then
             current <- current + 1
 
-    let check tokenType =
+    let isMatch tokenType =
         let ct = currentToken ()
         ct.tokenType = tokenType
 
@@ -26,33 +26,24 @@ type Parser(tokens: Token list) =
         lox.error token msg
         ParseError(token, msg)
 
-    let consume tokenType msg =
-        if check tokenType then
-            advance ()
-        else
-            raise (parseError (currentToken ()) msg)
-
     let advanceIfMatch (types: TokenType list) =
-        let ct = currentToken ()
-
         types
-        |> List.tryFind (fun x -> x = ct.tokenType)
+        |> List.tryFind isMatch
         |> Option.map (fun _ ->
+            let ct = currentToken ()
             advance ()
             ct)
 
-    let rec statement () =
-        match advanceIfMatch [ PRINT ] with
-        | Some _ ->
-            let expr = expression ()
-            consume SEMICOLON "Expect ';' after value."
-            Print(expr)
-        | None ->
-            let expr = expression ()
-            consume SEMICOLON "Expect ';' after expression."
-            Expression(expr)
+    let consume tokenType msg =
+        advanceIfMatch [ tokenType ]
+        |> Option.defaultWith (fun _ -> raise (parseError (currentToken ()) msg))
 
-    and expression () = equality ()
+    let synchronize () =
+        while not (isAtEnd ()) && (currentToken().tokenType <> SEMICOLON) do
+            advance ()
+
+
+    let rec expression () = equality ()
 
     and tryMakeBinary left checkTypes rightMaker =
         match advanceIfMatch checkTypes with
@@ -106,17 +97,48 @@ type Parser(tokens: Token list) =
         | LEFT_PAREN ->
             advance ()
             let expr = expression ()
-            consume RIGHT_BRACE "Expect ')' after expression."
+            consume RIGHT_BRACE "Expect ')' after expression." |> ignore
             Grouping(expr)
+        | IDENTIFIER ->
+            advance ()
+            Variable(ct)
         | _ -> raise (parseError ct "Expect expression.")
+
+    and statement () =
+        printStmt () |> Option.defaultWith exprStmt
+
+    and exprStmt () =
+        let expr = expression ()
+        consume SEMICOLON "Expect ';' after value." |> ignore
+        Print(expr)
+
+    and printStmt () =
+        advanceIfMatch [ PRINT ]
+        |> Option.map (fun _ ->
+            let expr = expression ()
+            consume SEMICOLON "Expect ';' after expression." |> ignore
+            Expression(expr))
+
+    and declaration () =
+        try
+            varDecl () |> Option.defaultWith statement
+        with ParseError(_, _) ->
+            synchronize ()
+            failwith "what to do after synchronize?"
+
+    and varDecl () =
+        advanceIfMatch [ VAR ]
+        |> Option.map (fun _ ->
+            let name = consume IDENTIFIER "Expect variable name."
+            let expr = advanceIfMatch [ EQUAL ] |> Option.map (fun _ -> expression ())
+            consume SEMICOLON "Expect ';' after variable declaration." |> ignore
+
+            VarDeclar(name, expr))
+
+    and identifier () = ()
 
     member x.parse() =
         seq {
             while not (isAtEnd ()) do
-                yield (statement ())
+                yield (declaration ())
         }
-
-// try
-//     Some(expression ())
-// with ParseError(tk, msg) ->
-//     None

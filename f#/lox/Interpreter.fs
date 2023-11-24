@@ -82,7 +82,13 @@ type Interpreter() =
             override x.visitExpression expr = evaluate expr |> ignore
 
             override x.visitPrint expr =
-                evaluate expr |> stringify |> printfn "%s" }
+                evaluate expr |> stringify |> printfn "%s"
+
+            override x.visitVarDeclar name expr =
+                let initializer = expr |> Option.map evaluate
+                ()
+
+        }
 
     let execute = stmtVisitor.visit
 
