@@ -9,7 +9,7 @@ module tests =
     let parse code =
         let scanner = Scanner(code)
         let parser = Parser(scanner.scanTokens () |> Seq.toList)
-        parser.parse ()
+        parser.parseExpr ()
 
     [<Tests>]
     let tests =
@@ -20,7 +20,7 @@ module tests =
                   let stmts =
                       parse
                       <| """
-                         print 1+2;
+                         (1+2)
                          """
 
                   stmts |> printfn "%A" ]

@@ -97,3 +97,5 @@ type Interpreter() =
             stmts |> Seq.iter execute
         with :? RuntimeError as error ->
             lox.runtimeError error
+
+    member x.evaluateExprAndPrint = stmtVisitor.visitPrint

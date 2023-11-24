@@ -19,6 +19,7 @@ type CliArguments =
 
 module cli =
     open System.Text.RegularExpressions
+    open lox.ast
 
 
     let (|RegEx|_|) pattern input =
@@ -37,9 +38,23 @@ module cli =
         if not lox.hadError then
             parseRes |> interpreter.interpret
 
-    let scan source =
+    let testChap04 source =
         let scanner = Scanner(source)
         scanner.scanTokens () |> Seq.iter (fun tk -> printfn "%s" (tk.ToString()))
+
+    let testChap06 source =
+        let scanner = Scanner(source)
+        let parser = Parser(scanner.scanTokens () |> Seq.toList)
+        let expr = parser.parseExpr ()
+        let astPrinter = AstPrinter()
+        printfn "%s" (astPrinter.print expr)
+
+    let testChap07 source =
+        let scanner = Scanner(source)
+        let parser = Parser(scanner.scanTokens () |> Seq.toList)
+        let expr = parser.parseExpr ()
+        let interpreter = Interpreter()
+        interpreter.evaluateExprAndPrint expr
 
     let runFile testSuite (path: string) =
         let source = File.ReadAllText path
@@ -47,10 +62,10 @@ module cli =
         match testSuite with
         | Some suiteName ->
             match suiteName with
-            | RegEx "chap04" _ -> scan source
-            | RegEx "chap06" _ -> scan source
-            | RegEx "chap07" _ -> scan source
-            | RegEx "chap08" _ -> scan source
+            | RegEx "chap04" _ -> testChap04 source
+            | RegEx "chap06" _ -> testChap06 source
+            | RegEx "chap07" _ -> testChap07 source
+            | RegEx "chap08" _ -> run source
             | _ -> failwithf "not support test %s" suiteName
         | None -> run source
 

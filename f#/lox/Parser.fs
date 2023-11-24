@@ -99,7 +99,7 @@ type Parser(tokens: Token list) =
         | LEFT_PAREN ->
             advance ()
             let expr = expression ()
-            consume RIGHT_BRACE "Expect ')' after expression." |> ignore
+            consume RIGHT_PAREN "Expect ')' after expression." |> ignore
             Grouping(expr)
         | IDENTIFIER ->
             advance ()
@@ -146,3 +146,5 @@ type Parser(tokens: Token list) =
                 | Some stmt -> yield stmt
                 | None -> ()
         }
+
+    member x.parseExpr() = expression ()
