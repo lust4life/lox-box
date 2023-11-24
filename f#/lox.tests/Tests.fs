@@ -5,11 +5,13 @@ open Expecto
 module tests =
     open lox.parser
     open lox.scanner
+    open lox.interpreter
 
     let parse code =
         let scanner = Scanner(code)
         let parser = Parser(scanner.scanTokens () |> Seq.toList)
-        parser.parseExpr ()
+        let interpret = Interpreter()
+        parser.parseExpr () |> interpret.evaluateExprAndPrint
 
     [<Tests>]
     let tests =
@@ -17,10 +19,7 @@ module tests =
             "parser"
             [ testCase "xx"
               <| fun _ ->
-                  let stmts =
-                      parse
-                      <| """
-                         (1+2)
-                         """
-
-                  stmts |> printfn "%A" ]
+                  parse
+                  <| """
+                    -1
+                    """ ]

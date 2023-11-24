@@ -1,3 +1,4 @@
-// Note: This is just for the expression parsing chapter which prints the AST.
+// Note: This is just for the expression evaluating chapter which evaluates an
+// expression directly.
 (5 - (3 - 1)) + -1
-// expect: (+ (group (- 5.0 (group (- 3.0 1.0)))) (- 1.0))
+// expect: 2

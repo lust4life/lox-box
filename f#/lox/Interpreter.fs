@@ -28,10 +28,9 @@ type Interpreter() =
 
                 match operator.tokenType with
                 | MINUS ->
-                    if rightValue :? double then
-                        -(downcast rightValue)
-                    else
-                        raise (RuntimeError(operator, "Operand must be a number."))
+                    match rightValue with
+                    | :? double as rn -> -rn
+                    | _ -> raise (RuntimeError(operator, "Operand must be a number."))
                 | BANG -> not (castTruthy rightValue)
                 | x -> failwithf "not support %A" x
 
