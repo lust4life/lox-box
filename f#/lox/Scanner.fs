@@ -9,7 +9,7 @@ type Scanner(source: string) =
     let mutable current = 0
     let mutable line = 1
 
-    let keywords =
+    let keywords: Map<string, TokenType> =
         Map["and", AND
             "and", AND
             "class", CLASS
