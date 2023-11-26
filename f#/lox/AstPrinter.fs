@@ -8,8 +8,6 @@ type AstPrinter() =
 
     let rec exprVisitor =
         { new ExprVisitor<string>() with
-
-
             override x.visitLiteral value =
                 match value with
                 | null -> "nil"
@@ -23,7 +21,12 @@ type AstPrinter() =
 
             override x.visitGrouping expr = parenthesize "group" [ expr ]
             override x.visitVariable name = name.lexeme
-            override x.visitAssign(name, value) = failwith "not impl" }
+            override x.visitAssign(name, value) = failwith "not impl"
+
+            override x.visitLogical left operator right =
+                parenthesize operator.lexeme [ left; right ]
+
+        }
 
     and parenthesize name exprs =
         seq {

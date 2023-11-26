@@ -42,6 +42,14 @@ type Parser(tokens: Token list) =
             tryMakeBinary expr checkTypes rightMaker
         | None -> left
 
+    let rec tryMakeLogical left checkTypes rightMaker =
+        match advanceIfMatch checkTypes with
+        | Some operator ->
+            let right = rightMaker ()
+            let expr: Expr = Logical(left, operator, right)
+            tryMakeLogical expr checkTypes rightMaker
+        | None -> left
+
     let consume tokenType msg =
         advanceIfMatch [ tokenType ]
         |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) msg)
@@ -57,7 +65,7 @@ type Parser(tokens: Token list) =
 
     and assignment () =
         // we need to take = as an binary operator, as we can't forseen the later assign operator
-        let lv = equality ()
+        let lv = logicOr ()
 
         match advanceIfMatch [ EQUAL ] with
         | Some equalTk ->
@@ -67,6 +75,14 @@ type Parser(tokens: Token list) =
                 Assign(name, rv)
             | _ -> raiseParseError equalTk "Invalid assignment target."
         | None -> lv
+
+    and logicOr () =
+        let left = logicAnd ()
+        tryMakeLogical left [ OR ] logicAnd
+
+    and logicAnd () =
+        let left = equality ()
+        tryMakeLogical left [ AND ] equality
 
     and equality () =
         let left = comparison ()
@@ -120,7 +136,10 @@ type Parser(tokens: Token list) =
         | _ -> raiseParseError ct "Expect expression."
 
     and statement () =
-        printStmt () |> Option.orElseWith block |> Option.defaultWith exprStmt
+        printStmt ()
+        |> Option.orElseWith ifStmt
+        |> Option.orElseWith block
+        |> Option.defaultWith exprStmt
 
     and block () =
         advanceIfMatch [ LEFT_BRACE ]
@@ -146,6 +165,16 @@ type Parser(tokens: Token list) =
             consume SEMICOLON "Expect ';' after value." |> ignore
             Print(expr))
 
+    and ifStmt () =
+        advanceIfMatch [ IF ]
+        |> Option.map (fun _ ->
+            consume LEFT_PAREN "" |> ignore
+            let condition = expression ()
+            consume RIGHT_PAREN "" |> ignore
+            let thenPart = statement ()
+            let elsePart = advanceIfMatch [ ELSE ] |> Option.map (fun _ -> statement ())
+            If(condition, thenPart, elsePart))
+
     and declaration () =
         try
             varDecl () |> Option.defaultWith statement |> Some
@@ -162,7 +191,6 @@ type Parser(tokens: Token list) =
 
             VarDeclar(name, expr))
 
-    and identifier () = ()
 
     member x.parse() =
         seq {

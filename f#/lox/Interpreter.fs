@@ -73,6 +73,14 @@ type Interpreter() =
                 env.assign name value
                 value
 
+            override x.visitLogical left operator right =
+                let leftValue = x.visit left
+
+                match operator.tokenType with
+                | OR -> if castTruthy leftValue then leftValue else x.visit right
+                | AND -> if castTruthy leftValue then x.visit right else leftValue
+                | _ -> failwith "should not happen"
+
         }
 
     let evaluate = exprVisitor.visit
@@ -91,27 +99,41 @@ type Interpreter() =
         | _ -> value.ToString()
 
     let stmtVisitor =
-        { new StmtVisitor() with
-            override x.visitExpression expr = evaluate expr |> ignore
+        {
 
-            override x.visitPrint expr =
-                evaluate expr |> stringify |> printfn "%s"
+          new StmtVisitor() with
+              override x.visitExpression expr = evaluate expr |> ignore
 
-            override x.visitVarDeclar name expr =
-                let initializer = expr |> Option.map evaluate
-                let value = initializer |> Option.defaultValue null
-                env.define name value
+              override x.visitPrint expr =
+                  evaluate expr |> stringify |> printfn "%s"
 
-            override x.visitBlock stmts =
-                let previousEnv = env
+              override x.visitVarDeclar name expr =
+                  let initializer = expr |> Option.map evaluate
+                  let value = initializer |> Option.defaultValue null
+                  env.define name value
 
-                try
-                    env <- Environment(Some env)
+              override x.visitBlock stmts =
+                  let previousEnv = env
 
-                    for stmt in stmts do
-                        x.visit stmt
-                finally
-                    env <- previousEnv }
+                  try
+                      env <- Environment(Some env)
+
+                      for stmt in stmts do
+                          x.visit stmt
+                  finally
+                      env <- previousEnv
+
+              override x.visitIf condition thenPart elsePart =
+                  let conditionValue = evaluate condition |> castTruthy
+
+                  if conditionValue then
+                      x.visit thenPart
+                  else
+                      match elsePart with
+                      | Some elsePart -> x.visit elsePart
+                      | None -> ()
+
+        }
 
     let execute = stmtVisitor.visit
 

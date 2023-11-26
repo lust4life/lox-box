@@ -9,6 +9,7 @@ type Expr =
     | Unary of operator: Token * right: Expr
     | Variable of Token
     | Assign of Token * Expr
+    | Logical of left: Expr * operator: Token * right: Expr
 
 [<AbstractClass>]
 type ExprVisitor<'R>() =
@@ -20,12 +21,14 @@ type ExprVisitor<'R>() =
         | Unary(operator, right) -> x.visitUnary (operator, right)
         | Variable name -> x.visitVariable name
         | Assign(name, expr) -> x.visitAssign (name, expr)
+        | Logical(left, operator, right) -> x.visitLogical left operator right
 
     abstract visitLiteral: obj -> 'R
     abstract visitUnary: Token * Expr -> 'R
     abstract visitAssign: Token * Expr -> 'R
     abstract visitBinary: Expr * Token * Expr -> 'R
     abstract visitVariable: Token -> 'R
+    abstract visitLogical: Expr -> Token -> Expr -> 'R
 
     abstract visitGrouping: Expr -> 'R
     default x.visitGrouping expr = x.visit expr
