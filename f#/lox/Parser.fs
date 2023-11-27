@@ -138,6 +138,8 @@ type Parser(tokens: Token list) =
     and statement () =
         printStmt ()
         |> Option.orElseWith ifStmt
+        |> Option.orElseWith whileStmt
+        |> Option.orElseWith forStmt
         |> Option.orElseWith block
         |> Option.defaultWith exprStmt
 
@@ -168,12 +170,63 @@ type Parser(tokens: Token list) =
     and ifStmt () =
         advanceIfMatch [ IF ]
         |> Option.map (fun _ ->
-            consume LEFT_PAREN "" |> ignore
+            consume LEFT_PAREN "Expect '(' after 'if'." |> ignore
             let condition = expression ()
-            consume RIGHT_PAREN "" |> ignore
+            consume RIGHT_PAREN "Expect ')' after if condition." |> ignore
             let thenPart = statement ()
             let elsePart = advanceIfMatch [ ELSE ] |> Option.map (fun _ -> statement ())
             If(condition, thenPart, elsePart))
+
+    and whileStmt () =
+        advanceIfMatch [ WHILE ]
+        |> Option.map (fun _ ->
+            consume LEFT_PAREN "Expect '(' after 'while'." |> ignore
+            let condition = expression ()
+            consume RIGHT_PAREN "Expect ')' after condition." |> ignore
+            let body = statement ()
+            While(condition, body))
+
+    and forStmt () =
+        advanceIfMatch [ FOR ]
+        |> Option.map (fun _ ->
+            consume LEFT_PAREN "Expect '(' after 'for'." |> ignore
+
+            let initializer =
+                match advanceIfMatch [ SEMICOLON ] with
+                | Some _ -> None
+                | None -> varDecl () |> Option.defaultWith exprStmt |> Some
+
+            let condition =
+                match advanceIfMatch [ SEMICOLON ] with
+                | Some _ -> Literal(true)
+                | None ->
+                    let expr = expression ()
+                    consume SEMICOLON "Expect ';' after loop condition.." |> ignore
+                    expr
+
+            let increment =
+                match advanceIfMatch [ RIGHT_PAREN ] with
+                | Some _ -> None
+                | None ->
+                    let expr = expression ()
+                    consume RIGHT_PAREN "Expect ')' after for clauses." |> ignore
+                    Some expr
+
+            let body = statement ()
+
+            let desugared =
+                [ match initializer with
+                  | Some initializer -> yield initializer
+                  | None -> ()
+
+                  let whileBody =
+                      match increment with
+                      | Some increment -> Block([ body; Expression(increment) ])
+                      | None -> body
+
+                  yield While(condition, whileBody) ]
+
+            Block(desugared))
 
     and declaration () =
         try

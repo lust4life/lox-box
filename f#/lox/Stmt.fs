@@ -9,6 +9,7 @@ type Stmt =
     | VarDeclar of Token * Expr option
     | Block of Stmt list
     | If of condition: Expr * thenPart: Stmt * elsePart: Stmt option
+    | While of condition: Expr * body: Stmt
 
 
 [<AbstractClass>]
@@ -20,9 +21,11 @@ type StmtVisitor() =
         | VarDeclar(name: Token, expr) -> x.visitVarDeclar name expr
         | Block stmts -> x.visitBlock stmts
         | If(condition, thenPart, elsePart) -> x.visitIf condition thenPart elsePart
+        | While(condition, body) -> x.visitWhile condition body
 
     abstract visitPrint: Expr -> unit
     abstract visitExpression: Expr -> unit
     abstract visitVarDeclar: Token -> Expr option -> unit
     abstract visitBlock: Stmt list -> unit
     abstract visitIf: Expr -> Stmt -> Stmt option -> unit
+    abstract visitWhile: Expr -> Stmt -> unit

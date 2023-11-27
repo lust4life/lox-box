@@ -10,11 +10,11 @@ module lox =
     let mutable hadRuntimeError = false
 
     let runtimeError (error: RuntimeError) =
-        eprintf "%s\n[line %i]" error.Data1 error.Data0.line
+        eprintfn "%s\n[line %i]" error.Data1 error.Data0.line
         hadRuntimeError <- true
 
     let private report line where msg =
-        eprintf "[line %i] Error%s: %s" line where msg
+        eprintfn "[line %i] Error%s: %s" line where msg
         hadError <- true
 
     let error (token: Token) msg =

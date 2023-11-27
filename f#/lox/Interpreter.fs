@@ -133,6 +133,10 @@ type Interpreter() =
                       | Some elsePart -> x.visit elsePart
                       | None -> ()
 
+              override x.visitWhile condition body =
+                  while evaluate condition |> castTruthy do
+                      x.visit body
+
         }
 
     let execute = stmtVisitor.visit
