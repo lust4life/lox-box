@@ -5,6 +5,7 @@ open lox.stmt
 open lox.expr
 open System.Collections.Generic
 open lox.token
+open lox
 
 type Resolver(interpreter: Interpreter) =
     let scopes = Stack<Dictionary<string, bool>>()
@@ -46,7 +47,15 @@ type Resolver(interpreter: Interpreter) =
                 x.visit right
 
 
-            override x.visitVariable name = resolveVariable name
+            override x.visitVariable name =
+                match scopes.TryPeek() with
+                | true, scope ->
+                    match scope.TryGetValue name.lexeme with
+                    | true, false -> lox.error name "Can't read local variable in its own initializer."
+                    | _ -> ()
+                | _ -> ()
+
+                resolveVariable name
 
             override x.visitAssign(name, expr) =
                 x.visit expr
