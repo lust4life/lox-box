@@ -52,6 +52,7 @@ type TokenType =
 
     | EOF
 
+[<ReferenceEquality>]
 type Token =
     { tokenType: TokenType
       lexeme: string
