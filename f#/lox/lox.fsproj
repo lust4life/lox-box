@@ -9,7 +9,6 @@
     <Compile Include="Lox.fs" />
     <Compile Include="Expr.fs" />
     <Compile Include="Stmt.fs" />
-    <Compile Include="LoxFunction.fs" />
     <Compile Include="Environment.fs" />
     <Compile Include="AstPrinter.fs" />
     <Compile Include="Interpreter.fs" />

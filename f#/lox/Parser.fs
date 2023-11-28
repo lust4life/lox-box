@@ -142,7 +142,7 @@ type Parser(tokens: Token list) =
         | Some operator ->
             let right = unary ()
             Unary(operator, right)
-        | None -> primary ()
+        | None -> call ()
 
     and call () =
         let callee = primary ()
@@ -181,8 +181,16 @@ type Parser(tokens: Token list) =
         |> Option.orElseWith ifStmt
         |> Option.orElseWith whileStmt
         |> Option.orElseWith forStmt
+        |> Option.orElseWith returnStmt
         |> Option.orElseWith block
         |> Option.defaultWith exprStmt
+
+    and returnStmt () =
+        advanceIfMatch [ RETURN ]
+        |> Option.map (fun _ ->
+            let expr = if isMatch SEMICOLON then None else Some(expression ())
+            consume SEMICOLON "Expect ';' after return." |> ignore
+            Return(expr))
 
     and block () =
         advanceIfMatch [ LEFT_BRACE ]
@@ -293,7 +301,7 @@ type Parser(tokens: Token list) =
         |> Option.map (fun _ ->
             let name = consume IDENTIFIER "Expect function name."
             consume LEFT_PAREN "Expect '(' after function" |> ignore
-            let paramList = makeParams []
+            let paramList = makeParams [] |> List.rev
             consume RIGHT_PAREN "Expect ')' after parameters." |> ignore
 
             let body =
@@ -301,7 +309,7 @@ type Parser(tokens: Token list) =
                 |> Option.map (function
                     | Block(stmts) -> stmts
                     | _ -> failwith "should not happen, must be a block here")
-                |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) "need block")
+                |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) "Expect '{' before function body.")
 
             FunDeclar(name, paramList, body))
 

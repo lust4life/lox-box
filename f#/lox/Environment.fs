@@ -9,7 +9,9 @@ type Environment(enclosing: Environment option) =
 
     new() = Environment(None)
 
-    member x.define (name: Token) value = infos[name.lexeme] <- value
+    member x.define (name: Token) value = x.defineByName name.lexeme value
+
+    member x.defineByName (name: string) value = infos[name] <- value
 
     member x.get(name: Token) =
         let key = name.lexeme

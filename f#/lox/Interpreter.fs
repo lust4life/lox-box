@@ -5,12 +5,27 @@ open lox.expr
 open lox.token
 open lox.stmt
 open lox.env
-open lox.func
 
-type Interpreter() =
+exception ReturnError of obj
+
+type Interpreter() as interpreter =
     let globalEnv = Environment()
     let mutable localEnv = globalEnv
 
+    let initializeNativeFun () =
+        globalEnv.defineByName
+            "clock"
+            {
+
+              new System.Object() with
+                  member x.ToString() = "<native fn>"
+              interface LoxCallable with
+                  member x.call interpreter args paren =
+                      System.DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+
+            }
+
+    do initializeNativeFun ()
 
     let castTruthy (value: obj) =
         match value with
@@ -88,8 +103,8 @@ type Interpreter() =
                 let args = args |> List.map x.visit
 
                 match callee with
-                | :? LoxFunction as loxFunc -> loxFunc.Call args
-                | _ -> raise (RuntimeError(paren, "not impl."))
+                | :? LoxCallable as loxCallable -> loxCallable.call interpreter args paren
+                | _ -> raise (RuntimeError(paren, "Can only call functions and classes."))
 
         }
 
@@ -148,8 +163,13 @@ type Interpreter() =
                       x.visit body
 
               override x.visitFunDeclar name paramList body =
-                  let loxFunction = LoxFunction(name, paramList, body)
+                  // cause we are using static scope, so we capture the environment when define the function
+                  let loxFunction = LoxFunction(name, paramList, body, localEnv)
                   localEnv.define name loxFunction
+
+              override x.visitReturn expr =
+                  let res = expr |> Option.map evaluate |> Option.toObj
+                  raise (ReturnError(res))
 
         }
 
@@ -162,3 +182,36 @@ type Interpreter() =
             lox.runtimeError error
 
     member x.evaluateExprAndPrint = stmtVisitor.visitPrint
+
+    member x.executeBlock (stmts: Stmt seq) (funEnv: Environment) =
+        let previous = localEnv
+
+        try
+            localEnv <- funEnv
+            x.interpret stmts
+        finally
+            localEnv <- previous
+
+and LoxFunction(name: Token, paramList: Token list, body: Stmt list, closure: Environment) =
+
+    interface LoxCallable with
+        member x.call (interpreter: Interpreter) (args: obj list) (paren) : obj =
+            if (args.Length <> paramList.Length) then
+                raise (RuntimeError(paren, $"Expected {paramList.Length} arguments but got {args.Length}."))
+
+
+            try
+                let funEnv = Environment(Some closure)
+
+                args
+                |> List.zip paramList
+                |> List.iter (fun (name, value) -> funEnv.define name value)
+
+                interpreter.executeBlock body funEnv
+            with ReturnError value ->
+                value
+
+    override x.ToString() = $"<fn {name.lexeme}>"
+
+and LoxCallable =
+    abstract call: Interpreter -> obj list -> Token -> obj
