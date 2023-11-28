@@ -1,4 +1,1 @@
-fun foo(arg,
-        arg) { // Error at 'arg': Already a variable with this name in this scope.
-  "body";
-}
+return "wat"; // Error at 'return': Can't return from top-level code.

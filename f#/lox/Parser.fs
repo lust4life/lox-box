@@ -187,10 +187,10 @@ type Parser(tokens: Token list) =
 
     and returnStmt () =
         advanceIfMatch [ RETURN ]
-        |> Option.map (fun _ ->
+        |> Option.map (fun tk ->
             let expr = if isMatch SEMICOLON then None else Some(expression ())
             consume SEMICOLON "Expect ';' after return." |> ignore
-            Return(expr))
+            Return(tk, expr))
 
     and block () =
         advanceIfMatch [ LEFT_BRACE ]

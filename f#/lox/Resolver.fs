@@ -7,8 +7,14 @@ open System.Collections.Generic
 open lox.token
 open lox
 
+type FunctionType =
+    | NONE
+    | FUNCTION
+
 type Resolver(interpreter: Interpreter) =
+
     let scopes = Stack<Dictionary<string, bool>>()
+    let mutable currentFunctionType = NONE
 
     let declare (name: Token) =
         match scopes.TryPeek() with
@@ -30,6 +36,13 @@ type Resolver(interpreter: Interpreter) =
 
         { new System.IDisposable with
             member x.Dispose() = scopes.Pop() |> ignore }
+
+    let withinFunction () =
+        let previous = currentFunctionType
+        currentFunctionType <- FUNCTION
+
+        { new System.IDisposable with
+            member x.Dispose() = currentFunctionType <- previous }
 
     let resolveVariable name =
         let depth =
@@ -113,6 +126,7 @@ type Resolver(interpreter: Interpreter) =
                   define name
 
                   use _ = createScope ()
+                  use _ = withinFunction ()
 
                   paramList
                   |> List.iter (fun param ->
@@ -121,7 +135,10 @@ type Resolver(interpreter: Interpreter) =
 
                   body |> List.iter x.visit
 
-              override x.visitReturn expr =
+              override x.visitReturn keyword expr =
+                  if currentFunctionType = NONE then
+                      lox.error keyword "Can't return from top-level code."
+
                   match expr with
                   | Some expr -> resolveExpr expr
                   | None -> ()

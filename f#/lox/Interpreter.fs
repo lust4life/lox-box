@@ -179,7 +179,7 @@ type Interpreter() as interpreter =
                   let loxFunction = LoxFunction(name, paramList, body, localEnv)
                   localEnv.define name loxFunction
 
-              override x.visitReturn expr =
+              override x.visitReturn keyword expr =
                   let res = expr |> Option.map evaluate |> Option.toObj
                   raise (ReturnError(res))
 
