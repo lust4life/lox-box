@@ -2,6 +2,7 @@ namespace lox.ast
 
 open lox.expr
 open System
+open lox.token
 
 type AstPrinter() =
 
@@ -21,10 +22,16 @@ type AstPrinter() =
 
             override x.visitGrouping expr = parenthesize "group" [ expr ]
             override x.visitVariable name = name.lexeme
-            override x.visitAssign(name, value) = failwith "not impl"
+
+            override x.visitAssign(name, value) =
+                parenthesize2 "=" [ name.lexeme; value ]
+
 
             override x.visitLogical left operator right =
                 parenthesize operator.lexeme [ left; right ]
+
+            override x.visitCall callee args paren =
+                parenthesize2 "call" (callee :: args |> List.map box)
 
         }
 
@@ -39,5 +46,25 @@ type AstPrinter() =
             yield ")"
         }
         |> System.String.Concat
+
+    and parenthesize2 name (parts: obj list) =
+        seq {
+            yield $"({name}"
+
+            for part in parts do
+                yield " "
+
+                let eachPart =
+                    match part with
+                    | :? Expr as part -> exprVisitor.visit part
+                    | :? Token as part -> part.lexeme
+                    | _ -> part.ToString()
+
+                yield eachPart
+
+            yield ")"
+        }
+        |> System.String.Concat
+
 
     member x.print = exprVisitor.visit

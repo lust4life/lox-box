@@ -5,9 +5,11 @@ open lox.expr
 open lox.token
 open lox.stmt
 open lox.env
+open lox.func
 
 type Interpreter() =
-    let mutable env = Environment()
+    let globalEnv = Environment()
+    let mutable localEnv = globalEnv
 
 
     let castTruthy (value: obj) =
@@ -66,11 +68,11 @@ type Interpreter() =
                 | STAR -> doWithNumberCast (*)
                 | x -> failwithf "not support %A" x
 
-            override x.visitVariable name = env.get name
+            override x.visitVariable name = localEnv.get name
 
             override x.visitAssign(name, expr) =
                 let value = x.visit expr
-                env.assign name value
+                localEnv.assign name value
                 value
 
             override x.visitLogical left operator right =
@@ -80,6 +82,14 @@ type Interpreter() =
                 | OR -> if castTruthy leftValue then leftValue else x.visit right
                 | AND -> if castTruthy leftValue then x.visit right else leftValue
                 | _ -> failwith "should not happen"
+
+            override x.visitCall callee args paren =
+                let callee = x.visit callee
+                let args = args |> List.map x.visit
+
+                match callee with
+                | :? LoxFunction as loxFunc -> loxFunc.Call args
+                | _ -> raise (RuntimeError(paren, "not impl."))
 
         }
 
@@ -110,18 +120,18 @@ type Interpreter() =
               override x.visitVarDeclar name expr =
                   let initializer = expr |> Option.map evaluate
                   let value = initializer |> Option.defaultValue null
-                  env.define name value
+                  localEnv.define name value
 
               override x.visitBlock stmts =
-                  let previousEnv = env
+                  let previousEnv = localEnv
 
                   try
-                      env <- Environment(Some env)
+                      localEnv <- Environment(Some localEnv)
 
                       for stmt in stmts do
                           x.visit stmt
                   finally
-                      env <- previousEnv
+                      localEnv <- previousEnv
 
               override x.visitIf condition thenPart elsePart =
                   let conditionValue = evaluate condition |> castTruthy
@@ -136,6 +146,10 @@ type Interpreter() =
               override x.visitWhile condition body =
                   while evaluate condition |> castTruthy do
                       x.visit body
+
+              override x.visitFunDeclar name paramList body =
+                  let loxFunction = LoxFunction(name, paramList, body)
+                  localEnv.define name loxFunction
 
         }
 

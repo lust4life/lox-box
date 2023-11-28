@@ -34,25 +34,62 @@ type Parser(tokens: Token list) =
             advance ()
             ct)
 
-    let rec tryMakeBinary left checkTypes rightMaker =
+    let rec makeBinary left checkTypes rightMaker =
         match advanceIfMatch checkTypes with
         | Some operator ->
             let right = rightMaker ()
             let expr: Expr = Binary(left, operator, right)
-            tryMakeBinary expr checkTypes rightMaker
+            makeBinary expr checkTypes rightMaker
         | None -> left
 
-    let rec tryMakeLogical left checkTypes rightMaker =
+    let rec makeLogical left checkTypes rightMaker =
         match advanceIfMatch checkTypes with
         | Some operator ->
             let right = rightMaker ()
             let expr: Expr = Logical(left, operator, right)
-            tryMakeLogical expr checkTypes rightMaker
+            makeLogical expr checkTypes rightMaker
         | None -> left
 
     let consume tokenType msg =
         advanceIfMatch [ tokenType ]
         |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) msg)
+
+
+    let rec makeCall callee argMaker =
+        match advanceIfMatch [ LEFT_PAREN ] with
+        | Some _ ->
+            let arguments = makeArguments argMaker [] |> List.rev
+            let paren = consume RIGHT_PAREN "Expect ')' after arguments."
+            let callee = Call(callee, arguments, paren)
+            makeCall callee argMaker
+        | None -> callee
+
+    and makeArguments argMaker args =
+        if isMatch RIGHT_PAREN then
+            args
+        else
+            if args.Length >= 255 then
+                lox.error (currentToken ()) "Can't have more than 255 arguments."
+
+            let args = argMaker () :: args
+
+            match advanceIfMatch [ COMMA ] with
+            | Some _ -> makeArguments argMaker args
+            | None -> args
+
+    let rec makeParams (paramList: Token list) =
+        if isMatch RIGHT_PAREN then
+            paramList
+        else
+            if paramList.Length >= 255 then
+                lox.error (currentToken ()) "Can't have more than 255 parameters."
+
+            let param = consume IDENTIFIER "Expect parameter name."
+            let paramList = param :: paramList
+
+            match advanceIfMatch [ COMMA ] with
+            | Some _ -> makeParams paramList
+            | None -> paramList
 
     let synchronize () =
         while not (isAtEnd ()) && (currentToken().tokenType <> SEMICOLON) do
@@ -78,27 +115,27 @@ type Parser(tokens: Token list) =
 
     and logicOr () =
         let left = logicAnd ()
-        tryMakeLogical left [ OR ] logicAnd
+        makeLogical left [ OR ] logicAnd
 
     and logicAnd () =
         let left = equality ()
-        tryMakeLogical left [ AND ] equality
+        makeLogical left [ AND ] equality
 
     and equality () =
         let left = comparison ()
-        tryMakeBinary left [ BANG_EQUAL; EQUAL_EQUAL ] comparison
+        makeBinary left [ BANG_EQUAL; EQUAL_EQUAL ] comparison
 
     and comparison () =
         let left = term ()
-        tryMakeBinary left [ GREATER; GREATER_EQUAL; LESS; LESS_EQUAL ] term
+        makeBinary left [ GREATER; GREATER_EQUAL; LESS; LESS_EQUAL ] term
 
     and term () =
         let left = factor ()
-        tryMakeBinary left [ MINUS; PLUS ] factor
+        makeBinary left [ MINUS; PLUS ] factor
 
     and factor () =
         let left = unary ()
-        tryMakeBinary left [ SLASH; STAR ] unary
+        makeBinary left [ SLASH; STAR ] unary
 
     and unary () =
         match advanceIfMatch [ BANG; MINUS ] with
@@ -106,6 +143,10 @@ type Parser(tokens: Token list) =
             let right = unary ()
             Unary(operator, right)
         | None -> primary ()
+
+    and call () =
+        let callee = primary ()
+        makeCall callee expression
 
     and primary () =
         let ct = currentToken ()
@@ -230,7 +271,10 @@ type Parser(tokens: Token list) =
 
     and declaration () =
         try
-            varDecl () |> Option.defaultWith statement |> Some
+            varDecl ()
+            |> Option.orElseWith funDeclar
+            |> Option.defaultWith statement
+            |> Some
         with ParseError(_, _) ->
             synchronize ()
             None
@@ -244,6 +288,22 @@ type Parser(tokens: Token list) =
 
             VarDeclar(name, expr))
 
+    and funDeclar () =
+        advanceIfMatch [ FUN ]
+        |> Option.map (fun _ ->
+            let name = consume IDENTIFIER "Expect function name."
+            consume LEFT_PAREN "Expect '(' after function" |> ignore
+            let paramList = makeParams []
+            consume RIGHT_PAREN "Expect ')' after parameters." |> ignore
+
+            let body =
+                block ()
+                |> Option.map (function
+                    | Block(stmts) -> stmts
+                    | _ -> failwith "should not happen, must be a block here")
+                |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) "need block")
+
+            FunDeclar(name, paramList, body))
 
     member x.parse() =
         seq {

@@ -10,7 +10,7 @@ type Stmt =
     | Block of Stmt list
     | If of condition: Expr * thenPart: Stmt * elsePart: Stmt option
     | While of condition: Expr * body: Stmt
-
+    | FunDeclar of name: Token * paramList: Token list * body: Stmt list
 
 [<AbstractClass>]
 type StmtVisitor() =
@@ -22,6 +22,7 @@ type StmtVisitor() =
         | Block stmts -> x.visitBlock stmts
         | If(condition, thenPart, elsePart) -> x.visitIf condition thenPart elsePart
         | While(condition, body) -> x.visitWhile condition body
+        | FunDeclar(name, paramList, body) -> x.visitFunDeclar name paramList body
 
     abstract visitPrint: Expr -> unit
     abstract visitExpression: Expr -> unit
@@ -29,3 +30,4 @@ type StmtVisitor() =
     abstract visitBlock: Stmt list -> unit
     abstract visitIf: Expr -> Stmt -> Stmt option -> unit
     abstract visitWhile: Expr -> Stmt -> unit
+    abstract visitFunDeclar: Token -> Token list -> Stmt list -> unit

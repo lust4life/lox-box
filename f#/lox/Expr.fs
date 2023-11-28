@@ -10,6 +10,7 @@ type Expr =
     | Variable of Token
     | Assign of Token * Expr
     | Logical of left: Expr * operator: Token * right: Expr
+    | Call of callee: Expr * args: Expr list * paren: Token
 
 [<AbstractClass>]
 type ExprVisitor<'R>() =
@@ -22,6 +23,7 @@ type ExprVisitor<'R>() =
         | Variable name -> x.visitVariable name
         | Assign(name, expr) -> x.visitAssign (name, expr)
         | Logical(left, operator, right) -> x.visitLogical left operator right
+        | Call(callee, args, paren) -> x.visitCall callee args paren
 
     abstract visitLiteral: obj -> 'R
     abstract visitUnary: Token * Expr -> 'R
@@ -29,6 +31,7 @@ type ExprVisitor<'R>() =
     abstract visitBinary: Expr * Token * Expr -> 'R
     abstract visitVariable: Token -> 'R
     abstract visitLogical: Expr -> Token -> Expr -> 'R
+    abstract visitCall: Expr -> Expr list -> Token -> 'R
 
     abstract visitGrouping: Expr -> 'R
     default x.visitGrouping expr = x.visit expr
