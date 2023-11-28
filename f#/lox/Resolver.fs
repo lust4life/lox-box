@@ -12,7 +12,11 @@ type Resolver(interpreter: Interpreter) =
 
     let declare (name: Token) =
         match scopes.TryPeek() with
-        | true, scope -> scope[name.lexeme] <- false
+        | true, scope ->
+            if scope.ContainsKey name.lexeme then
+                lox.error name "Already a variable with this name in this scope."
+
+            scope[name.lexeme] <- false
         | _ -> ()
 
     let define (name: Token) =
@@ -105,9 +109,16 @@ type Resolver(interpreter: Interpreter) =
                   x.visit body
 
               override x.visitFunDeclar name paramList body =
+                  declare name
                   define name
+
                   use _ = createScope ()
-                  paramList |> List.iter define
+
+                  paramList
+                  |> List.iter (fun param ->
+                      declare param
+                      define param)
+
                   body |> List.iter x.visit
 
               override x.visitReturn expr =
