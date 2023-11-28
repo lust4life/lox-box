@@ -1,13 +1,16 @@
-fun returnArg(arg) {
-  return arg;
-}
+{
+  var f;
 
-fun returnFunCallWithArg(func, arg) {
-  return returnArg(func)(arg);
-}
+  {
+    var a = "a";
+    fun f_() { print a; }
+    f = f_;
+  }
 
-fun printArg(arg) {
-  print arg;
+  {
+    // Since a is out of scope, the local slot will be reused by b. Make sure
+    // that f still closes over a.
+    var b = "b";
+    f(); // expect: a
+  }
 }
-
-returnFunCallWithArg(printArg, "hello world"); // expect: hello world

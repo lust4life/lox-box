@@ -20,6 +20,7 @@ type CliArguments =
 module cli =
     open System.Text.RegularExpressions
     open lox.ast
+    open lox.resolver
 
 
     let (|RegEx|_|) pattern input =
@@ -32,8 +33,12 @@ module cli =
         let parseRes = parser.parse () |> Seq.toList
 
         if not lox.hadError then
-            let interpreter = new Interpreter()
-            parseRes |> interpreter.interpret
+            let interpreter = Interpreter()
+            let resolver = Resolver(interpreter)
+            resolver.resolve parseRes
+
+            if not lox.hadError then
+                interpreter.interpret parseRes
 
     let testChap04 source =
         let scanner = Scanner(source)

@@ -5,12 +5,14 @@ open lox.expr
 open lox.token
 open lox.stmt
 open lox.env
+open System.Collections.Generic
 
 exception ReturnError of obj
 
 type Interpreter() as interpreter =
     let globalEnv = Environment()
     let mutable localEnv = globalEnv
+    let resolvedState = Dictionary<Token, int>()
 
     let initializeNativeFun () =
         globalEnv.defineByName
@@ -26,6 +28,16 @@ type Interpreter() as interpreter =
             }
 
     do initializeNativeFun ()
+
+    let lookUpVariable name =
+        match resolvedState.TryGetValue name with
+        | true, depth -> localEnv.getAt depth name
+        | _ -> globalEnv.get name
+
+    let assignVariable name value =
+        match resolvedState.TryGetValue name with
+        | true, depth -> localEnv.assignAt depth name value
+        | _ -> globalEnv.assign name value
 
     let castTruthy (value: obj) =
         match value with
@@ -83,11 +95,11 @@ type Interpreter() as interpreter =
                 | STAR -> doWithNumberCast (*)
                 | x -> failwithf "not support %A" x
 
-            override x.visitVariable name = localEnv.get name
+            override x.visitVariable name = lookUpVariable name
 
             override x.visitAssign(name, expr) =
                 let value = x.visit expr
-                localEnv.assign name value
+                assignVariable name value
                 value
 
             override x.visitLogical left operator right =
@@ -191,6 +203,8 @@ type Interpreter() as interpreter =
             x.interpret stmts
         finally
             localEnv <- previous
+
+    member x.resolve name depth = resolvedState[name] <- depth
 
 and LoxFunction(name: Token, paramList: Token list, body: Stmt list, closure: Environment) =
 

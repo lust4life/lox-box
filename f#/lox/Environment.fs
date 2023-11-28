@@ -7,13 +7,23 @@ open lox.token
 type Environment(enclosing: Environment option) =
     let infos = Dictionary<string, obj>()
 
+    let rec ancestor depth (env: Environment) =
+        if depth > 0 then
+            ancestor (depth - 1) (env.Enclosing |> Option.get)
+        else
+            env
+
     new() = Environment(None)
 
     member x.define (name: Token) value = x.defineByName name.lexeme value
 
     member x.defineByName (name: string) value = infos[name] <- value
 
-    member x.get(name: Token) =
+    member x.getAt (depth) (name: Token) =
+        let theOne = ancestor depth x
+        theOne.rawGet name.lexeme
+
+    member x.get name =
         let key = name.lexeme
 
         match infos.TryGetValue key with
@@ -22,6 +32,7 @@ type Environment(enclosing: Environment option) =
             match enclosing with
             | Some enclosing -> enclosing.get name
             | None -> raise (RuntimeError(name, $"Undefined variable '{key}'."))
+
 
     member x.assign name value =
         let key = name.lexeme
@@ -32,3 +43,12 @@ type Environment(enclosing: Environment option) =
             match enclosing with
             | Some enclosing -> enclosing.assign name value
             | None -> raise (RuntimeError(name, $"Undefined variable '{key}'."))
+
+    member x.assignAt depth (name: Token) value =
+        let theOne = ancestor depth x
+        theOne.rawAssign name.lexeme value
+
+
+    member x.rawGet name = infos[name]
+    member x.rawAssign name value = infos[name] <- value
+    member x.Enclosing = enclosing
