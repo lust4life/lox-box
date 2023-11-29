@@ -55,14 +55,20 @@ type Parser(tokens: Token list) =
         |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) msg)
 
 
-    let rec makeCall callee argMaker =
-        match advanceIfMatch [ LEFT_PAREN ] with
-        | Some _ ->
-            let arguments = makeArguments argMaker [] |> List.rev
-            let paren = consume RIGHT_PAREN "Expect ')' after arguments."
-            let callee = Call(callee, arguments, paren)
-            makeCall callee argMaker
-        | None -> callee
+    let rec makeCallOrGet callee argMaker =
+        advanceIfMatch [ LEFT_PAREN; DOT ]
+        |> Option.map (function
+            | tk when tk.tokenType = LEFT_PAREN ->
+                let arguments = makeArguments argMaker [] |> List.rev
+                let paren = consume RIGHT_PAREN "Expect ')' after arguments."
+                let callee = Call(callee, arguments, paren)
+                makeCallOrGet callee argMaker
+            | _ ->
+                let name = consume IDENTIFIER "Expect property name after '.'."
+                let get = Get(callee, name)
+                makeCallOrGet get argMaker)
+        |> Option.defaultValue callee
+
 
     and makeArguments argMaker args =
         if isMatch RIGHT_PAREN then
@@ -110,6 +116,9 @@ type Parser(tokens: Token list) =
             | Variable name ->
                 let rv = assignment ()
                 Assign(name, rv)
+            | Get(callee, name) ->
+                let rv = assignment ()
+                Set(callee, name, rv)
             | _ -> raiseParseError equalTk "Invalid assignment target."
         | None -> lv
 
@@ -146,11 +155,11 @@ type Parser(tokens: Token list) =
 
     and call () =
         let callee = primary ()
-        makeCall callee expression
+        makeCallOrGet callee expression
 
     and primary () =
-        let ct = currentToken ()
-        let tokenType = ct.tokenType
+        let tk = currentToken ()
+        let tokenType = tk.tokenType
 
         match tokenType with
         | TRUE ->
@@ -165,16 +174,19 @@ type Parser(tokens: Token list) =
         | NUMBER
         | STRING ->
             advance ()
-            Literal(ct.literal)
+            Literal(tk.literal)
         | LEFT_PAREN ->
             advance ()
             let expr = expression ()
             consume RIGHT_PAREN "Expect ')' after expression." |> ignore
             Grouping(expr)
+        | THIS ->
+            advance ()
+            This(tk)
         | IDENTIFIER ->
             advance ()
-            Variable(ct)
-        | _ -> raiseParseError ct "Expect expression."
+            Variable(tk)
+        | _ -> raiseParseError tk "Expect expression."
 
     and statement () =
         printStmt ()
@@ -281,6 +293,7 @@ type Parser(tokens: Token list) =
         try
             varDecl ()
             |> Option.orElseWith funDeclar
+            |> Option.orElseWith classDeclar
             |> Option.defaultWith statement
             |> Some
         with ParseError(_, _) ->
@@ -297,21 +310,38 @@ type Parser(tokens: Token list) =
             VarDeclar(name, expr))
 
     and funDeclar () =
-        advanceIfMatch [ FUN ]
+        advanceIfMatch [ FUN ] |> Option.map (fun _ -> FunDeclar(func "function"))
+
+    and classDeclar () =
+        advanceIfMatch [ CLASS ]
         |> Option.map (fun _ ->
-            let name = consume IDENTIFIER "Expect function name."
-            consume LEFT_PAREN "Expect '(' after function" |> ignore
-            let paramList = makeParams [] |> List.rev
-            consume RIGHT_PAREN "Expect ')' after parameters." |> ignore
+            let name = consume IDENTIFIER "Expect class name."
+            consume LEFT_BRACE "Expect '{' before class body." |> ignore
 
-            let body =
-                block ()
-                |> Option.map (function
-                    | Block(stmts) -> stmts
-                    | _ -> failwith "should not happen, must be a block here")
-                |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) "Expect '{' before function body.")
+            let methods =
+                [ while not (isMatch RIGHT_BRACE) && not (isAtEnd ()) do
+                      yield func "method" ]
 
-            FunDeclar(name, paramList, body))
+            consume RIGHT_BRACE "Expect '}' after class body." |> ignore
+
+            Class(name, methods))
+
+    and func (kind: string) =
+        let name = consume IDENTIFIER $"Expect {kind} name."
+        consume LEFT_PAREN $"Expect '(' after {kind}" |> ignore
+        let paramList = makeParams [] |> List.rev
+        consume RIGHT_PAREN "Expect ')' after parameters." |> ignore
+
+        let body =
+            block ()
+            |> Option.map (function
+                | Block(stmts) -> stmts
+                | _ -> failwith "should not happen, must be a block here")
+            |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) $"Expect '{{' before {kind} body.")
+
+        { name = name
+          paramList = paramList
+          body = body }
 
     member x.parse() =
         seq {

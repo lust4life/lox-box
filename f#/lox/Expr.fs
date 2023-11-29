@@ -11,6 +11,9 @@ type Expr =
     | Assign of Token * Expr
     | Logical of left: Expr * operator: Token * right: Expr
     | Call of callee: Expr * args: Expr list * paren: Token
+    | Get of callee: Expr * name: Token
+    | Set of callee: Expr * name: Token * value: Expr
+    | This of keyword: Token
 
 [<AbstractClass>]
 type ExprVisitor<'R>() =
@@ -24,6 +27,9 @@ type ExprVisitor<'R>() =
         | Assign(name, expr) -> x.visitAssign (name, expr)
         | Logical(left, operator, right) -> x.visitLogical left operator right
         | Call(callee, args, paren) -> x.visitCall callee args paren
+        | Get(callee, name) -> x.visitGet callee name
+        | Set(callee, name, value) -> x.visitSet callee name value
+        | This(keyword) -> x.visitThis keyword
 
     abstract visitLiteral: obj -> 'R
     abstract visitUnary: Token * Expr -> 'R
@@ -32,6 +38,9 @@ type ExprVisitor<'R>() =
     abstract visitVariable: Token -> 'R
     abstract visitLogical: Expr -> Token -> Expr -> 'R
     abstract visitCall: Expr -> Expr list -> Token -> 'R
+    abstract visitGet: Expr -> Token -> 'R
+    abstract visitSet: Expr -> Token -> Expr -> 'R
+    abstract visitThis: Token -> 'R
 
     abstract visitGrouping: Expr -> 'R
     default x.visitGrouping expr = x.visit expr
@@ -49,6 +58,9 @@ type UnitExprVisitor() =
         | Assign(name, expr) -> x.visitAssign (name, expr)
         | Logical(left, operator, right) -> x.visitLogical left operator right
         | Call(callee, args, paren) -> x.visitCall callee args paren
+        | Get(callee, name) -> x.visitGet callee name
+        | Set(callee, name, value) -> x.visitSet callee name value
+        | This(keyword) -> x.visitThis keyword
 
     abstract visitLiteral: obj -> unit
     abstract visitUnary: Token * Expr -> unit
@@ -57,6 +69,9 @@ type UnitExprVisitor() =
     abstract visitVariable: Token -> unit
     abstract visitLogical: Expr -> Token -> Expr -> unit
     abstract visitCall: Expr -> Expr list -> Token -> unit
+    abstract visitGet: Expr -> Token -> unit
+    abstract visitSet: Expr -> Token -> Expr -> unit
+    abstract visitThis: Token -> unit
 
     abstract visitGrouping: Expr -> unit
     default x.visitGrouping expr = x.visit expr

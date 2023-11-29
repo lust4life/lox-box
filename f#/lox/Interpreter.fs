@@ -25,6 +25,8 @@ type Interpreter() as interpreter =
                   member x.call interpreter args paren =
                       System.DateTimeOffset.UtcNow.ToUnixTimeSeconds()
 
+                  member x.Arity = 0
+
             }
 
     do initializeNativeFun ()
@@ -115,8 +117,32 @@ type Interpreter() as interpreter =
                 let args = args |> List.map x.visit
 
                 match callee with
-                | :? LoxCallable as loxCallable -> loxCallable.call interpreter args paren
+                | :? LoxCallable as loxCallable ->
+                    if (args.Length <> loxCallable.Arity) then
+                        raise (RuntimeError(paren, $"Expected {loxCallable.Arity} arguments but got {args.Length}."))
+
+                    loxCallable.call interpreter args paren
                 | _ -> raise (RuntimeError(paren, "Can only call functions and classes."))
+
+            override x.visitGet callee name =
+                let callee = x.visit callee
+
+                match callee with
+                | :? LoxInstance as instance -> instance.get name
+                | _ -> raise (RuntimeError(name, "Only instances have properties."))
+
+            override x.visitSet callee name value =
+                let callee = x.visit callee
+
+                match callee with
+                | :? LoxInstance as instance ->
+                    let value = x.visit value
+                    instance.set name value
+                    value
+                | _ -> raise (RuntimeError(name, "Only instances have fields."))
+
+            override x.visitThis keyword = lookUpVariable keyword
+
 
         }
 
@@ -146,7 +172,7 @@ type Interpreter() as interpreter =
 
               override x.visitVarDeclar name expr =
                   let initializer = expr |> Option.map evaluate
-                  let value = initializer |> Option.defaultValue null
+                  let value = initializer |> Option.defaultValue ()
                   localEnv.define name value
 
               override x.visitBlock stmts =
@@ -174,14 +200,19 @@ type Interpreter() as interpreter =
                   while evaluate condition |> castTruthy do
                       x.visit body
 
-              override x.visitFunDeclar name paramList body =
+              override x.visitFunDeclar func =
                   // cause we are using static scope, so we capture the environment when define the function
-                  let loxFunction = LoxFunction(name, paramList, body, localEnv)
-                  localEnv.define name loxFunction
+                  let loxFunction = LoxFunction(func, localEnv, false)
+                  localEnv.define func.name loxFunction
 
               override x.visitReturn keyword expr =
                   let res = expr |> Option.map evaluate |> Option.toObj
                   raise (ReturnError(res))
+
+              override x.visitClass name methods =
+                  let loxClass = LoxClass(name.lexeme, methods, localEnv)
+                  localEnv.define name loxClass
+
 
         }
 
@@ -206,26 +237,86 @@ type Interpreter() as interpreter =
 
     member x.resolve name depth = resolvedState[name] <- depth
 
-and LoxFunction(name: Token, paramList: Token list, body: Stmt list, closure: Environment) =
+and LoxCallable =
+    abstract call: Interpreter -> obj list -> Token -> obj
+    abstract Arity: int
+
+and LoxFunction(func: Fun, closure: Environment, isInitializer: bool) =
+    override x.ToString() = $"<fn {func.name.lexeme}>"
+
+    member x.bind instance =
+        let closure = Environment(Some closure)
+        closure.defineByName "this" instance
+        LoxFunction(func, closure, isInitializer)
+
 
     interface LoxCallable with
         member x.call (interpreter: Interpreter) (args: obj list) (paren) : obj =
-            if (args.Length <> paramList.Length) then
-                raise (RuntimeError(paren, $"Expected {paramList.Length} arguments but got {args.Length}."))
+            let returnValue =
+                try
+                    let funEnv = Environment(Some closure)
+
+                    args
+                    |> List.zip func.paramList
+                    |> List.iter (fun (name, value) -> funEnv.define name value)
+
+                    interpreter.executeBlock func.body funEnv |> box
+                with ReturnError value ->
+                    value
+
+            if isInitializer then
+                closure.getAtByName 0 "this"
+            else
+                returnValue
+
+        member x.Arity = func.paramList.Length
 
 
-            try
-                let funEnv = Environment(Some closure)
+and LoxClass(name, methods, env) =
+    let methods =
+        methods
+        |> List.map (fun method -> method.name.lexeme, LoxFunction(method, env, method.name.lexeme = "init"))
+        |> Map.ofList
 
-                args
-                |> List.zip paramList
-                |> List.iter (fun (name, value) -> funEnv.define name value)
+    member x.name = name
 
-                interpreter.executeBlock body funEnv
-            with ReturnError value ->
-                value
+    member x.findMethod name =
+        match methods.TryGetValue name with
+        | true, method -> Some method
+        | _ -> None
 
-    override x.ToString() = $"<fn {name.lexeme}>"
+    override x.ToString() = name
 
-and LoxCallable =
-    abstract call: Interpreter -> obj list -> Token -> obj
+    interface LoxCallable with
+        member x.call (interpreter: Interpreter) (args: obj list) (paren) : obj =
+            let instance = LoxInstance(x)
+
+            match x.findMethod "init" with
+            | Some initializer ->
+                let initializer = initializer.bind (instance) :> LoxCallable
+                initializer.call interpreter args |> ignore
+            | None -> ()
+
+
+            instance
+
+        member x.Arity =
+            match x.findMethod "init" with
+            | Some initializer -> (initializer :> LoxCallable).Arity
+            | None -> 0
+
+and LoxInstance(klass: LoxClass) =
+    let fields = Dictionary<string, obj>()
+
+
+    override x.ToString() = klass.name + " instance"
+
+    member x.get name =
+        match fields.TryGetValue name.lexeme with
+        | true, value -> value
+        | _ ->
+            match klass.findMethod name.lexeme with
+            | Some value -> value.bind (x)
+            | _ -> raise (RuntimeError(name, $"Undefined property '{name.lexeme}'."))
+
+    member x.set name value = fields[name.lexeme] <- value

@@ -10,11 +10,18 @@ open lox
 type FunctionType =
     | NONE
     | FUNCTION
+    | INITIALIZER
+    | METHOD
+
+type ClassType =
+    | NONE
+    | CLASS
 
 type Resolver(interpreter: Interpreter) =
 
     let scopes = Stack<Dictionary<string, bool>>()
-    let mutable currentFunctionType = NONE
+    let mutable currentFunctionType = FunctionType.NONE
+    let mutable currentClassType = ClassType.NONE
 
     let declare (name: Token) =
         match scopes.TryPeek() with
@@ -25,10 +32,12 @@ type Resolver(interpreter: Interpreter) =
             scope[name.lexeme] <- false
         | _ -> ()
 
-    let define (name: Token) =
+    let defineByName name =
         match scopes.TryPeek() with
-        | true, scope -> scope[name.lexeme] <- true
+        | true, scope -> scope[name] <- true
         | _ -> ()
+
+    let define (tk: Token) = defineByName tk.lexeme
 
     let createScope () =
         let scope = Dictionary<_, _>()
@@ -37,12 +46,19 @@ type Resolver(interpreter: Interpreter) =
         { new System.IDisposable with
             member x.Dispose() = scopes.Pop() |> ignore }
 
-    let withinFunction () =
+    let withinFunction funcType =
         let previous = currentFunctionType
-        currentFunctionType <- FUNCTION
+        currentFunctionType <- funcType
 
         { new System.IDisposable with
             member x.Dispose() = currentFunctionType <- previous }
+
+    let withinClass classType =
+        let previous = currentClassType
+        currentClassType <- classType
+
+        { new System.IDisposable with
+            member x.Dispose() = currentClassType <- previous }
 
     let resolveVariable name =
         let depth =
@@ -52,6 +68,17 @@ type Resolver(interpreter: Interpreter) =
         match depth with
         | Some depth -> interpreter.resolve name depth
         | None -> ()
+
+    let resolveFunc func funcType resolve =
+        use _ = createScope ()
+        use _ = withinFunction funcType
+
+        func.paramList
+        |> List.iter (fun param ->
+            declare param
+            define param)
+
+        func.body |> List.iter resolve
 
     let exprVisitor =
         { new UnitExprVisitor() with
@@ -86,63 +113,81 @@ type Resolver(interpreter: Interpreter) =
                 x.visit callee
                 args |> List.iter x.visit
 
+            override x.visitGet callee name = x.visit callee
+
+            override x.visitSet callee name value =
+                x.visit value
+                x.visit callee
+
+            override x.visitThis keyword =
+                if currentClassType = ClassType.NONE then
+                    lox.error keyword "Can't use 'this' outside of a class."
+
+                resolveVariable keyword
+
+
+
         }
 
     let resolveExpr = exprVisitor.visit
 
     let stmtVisitor =
-        {
+        { new StmtVisitor() with
+            override x.visitExpression expr = resolveExpr expr
 
-          new StmtVisitor() with
-              override x.visitExpression expr = resolveExpr expr
+            override x.visitPrint expr = resolveExpr expr
 
-              override x.visitPrint expr = resolveExpr expr
-
-              override x.visitVarDeclar name expr =
-                  declare name
-                  expr |> Option.iter resolveExpr
-                  define name
+            override x.visitVarDeclar name expr =
+                declare name
+                expr |> Option.iter resolveExpr
+                define name
 
 
-              override x.visitBlock stmts =
-                  use _ = createScope ()
-                  stmts |> List.iter x.visit
+            override x.visitBlock stmts =
+                use _ = createScope ()
+                stmts |> List.iter x.visit
 
 
-              override x.visitIf condition thenPart elsePart =
-                  resolveExpr condition
-                  x.visit thenPart
+            override x.visitIf condition thenPart elsePart =
+                resolveExpr condition
+                x.visit thenPart
 
-                  match elsePart with
-                  | Some elsePart -> x.visit elsePart
-                  | None -> ()
+                match elsePart with
+                | Some elsePart -> x.visit elsePart
+                | None -> ()
 
-              override x.visitWhile condition body =
-                  resolveExpr condition
-                  x.visit body
+            override x.visitWhile condition body =
+                resolveExpr condition
+                x.visit body
 
-              override x.visitFunDeclar name paramList body =
-                  declare name
-                  define name
+            override x.visitFunDeclar func =
+                declare func.name
+                define func.name
+                resolveFunc func FUNCTION x.visit
 
-                  use _ = createScope ()
-                  use _ = withinFunction ()
+            override x.visitReturn keyword expr =
+                if currentFunctionType = FunctionType.NONE then
+                    lox.error keyword "Can't return from top-level code."
 
-                  paramList
-                  |> List.iter (fun param ->
-                      declare param
-                      define param)
+                match expr with
+                | Some expr ->
+                    if currentFunctionType = INITIALIZER then
+                        lox.error keyword "Can't return a value from an initializer."
 
-                  body |> List.iter x.visit
+                    resolveExpr expr
+                | None -> ()
 
-              override x.visitReturn keyword expr =
-                  if currentFunctionType = NONE then
-                      lox.error keyword "Can't return from top-level code."
+            override x.visitClass name methods =
+                declare name
+                define name
 
-                  match expr with
-                  | Some expr -> resolveExpr expr
-                  | None -> ()
+                use _ = createScope ()
+                use _ = withinClass CLASS
+                defineByName "this"
 
-        }
+                methods
+                |> List.iter (fun func ->
+                    let funcType = if func.name.lexeme = "init" then INITIALIZER else METHOD
+                    resolveFunc func funcType x.visit) }
 
     member x.resolve(stmts: Stmt seq) = stmts |> Seq.iter stmtVisitor.visit

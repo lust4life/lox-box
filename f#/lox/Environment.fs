@@ -15,13 +15,15 @@ type Environment(enclosing: Environment option) =
 
     new() = Environment(None)
 
-    member x.define (name: Token) value = x.defineByName name.lexeme value
+    member x.define (tk: Token) value = x.defineByName tk.lexeme value
 
     member x.defineByName (name: string) value = infos[name] <- value
 
-    member x.getAt (depth) (name: Token) =
+    member x.getAt (depth) (tk: Token) = x.getAtByName depth tk.lexeme
+
+    member x.getAtByName (depth) (name) =
         let theOne = ancestor depth x
-        theOne.rawGet name.lexeme
+        theOne.rawGet name
 
     member x.get name =
         let key = name.lexeme
