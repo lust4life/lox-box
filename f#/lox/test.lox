@@ -1,26 +1,15 @@
-{
-  var i = "before";
-
-  // New variable is in inner scope.
-  for (var i = 0; i < 1; i = i + 1) {
-    print i; // expect: 0
-
-    // Loop body is in second inner scope.
-    var i = -1;
-    print i; // expect: -1
+class Foo {
+  init(arg) {
+    print "Foo.init(" + arg + ")";
+    this.field = "init";
   }
 }
 
-{
-  // New variable shadows outer variable.
-  for (var i = 0; i > 0; i = i + 1) {}
+var foo = Foo("one"); // expect: Foo.init(one)
+foo.field = "field";
 
-  // Goes out of scope after loop.
-  var i = "after";
-  print i; // expect: after
+var foo2 = foo.init("two"); // expect: Foo.init(two)
+print foo2; // expect: Foo instance
 
-  // Can reuse an existing variable.
-  for (i = 0; i < 1; i = i + 1) {
-    print i; // expect: 0
-  }
-}
+// Make sure init() doesn't create a fresh instance.
+print foo.field; // expect: init

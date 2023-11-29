@@ -22,7 +22,7 @@ type Interpreter() as interpreter =
               new System.Object() with
                   member x.ToString() = "<native fn>"
               interface LoxCallable with
-                  member x.call interpreter args paren =
+                  member x.call interpreter args =
                       System.DateTimeOffset.UtcNow.ToUnixTimeSeconds()
 
                   member x.Arity = 0
@@ -121,7 +121,7 @@ type Interpreter() as interpreter =
                     if (args.Length <> loxCallable.Arity) then
                         raise (RuntimeError(paren, $"Expected {loxCallable.Arity} arguments but got {args.Length}."))
 
-                    loxCallable.call interpreter args paren
+                    loxCallable.call interpreter args
                 | _ -> raise (RuntimeError(paren, "Can only call functions and classes."))
 
             override x.visitGet callee name =
@@ -238,7 +238,7 @@ type Interpreter() as interpreter =
     member x.resolve name depth = resolvedState[name] <- depth
 
 and LoxCallable =
-    abstract call: Interpreter -> obj list -> Token -> obj
+    abstract call: Interpreter -> obj list -> obj
     abstract Arity: int
 
 and LoxFunction(func: Fun, closure: Environment, isInitializer: bool) =
@@ -251,7 +251,7 @@ and LoxFunction(func: Fun, closure: Environment, isInitializer: bool) =
 
 
     interface LoxCallable with
-        member x.call (interpreter: Interpreter) (args: obj list) (paren) : obj =
+        member x.call (interpreter: Interpreter) (args: obj list) =
             let returnValue =
                 try
                     let funEnv = Environment(Some closure)
@@ -288,7 +288,7 @@ and LoxClass(name, methods, env) =
     override x.ToString() = name
 
     interface LoxCallable with
-        member x.call (interpreter: Interpreter) (args: obj list) (paren) : obj =
+        member x.call (interpreter: Interpreter) (args: obj list) : obj =
             let instance = LoxInstance(x)
 
             match x.findMethod "init" with
