@@ -16,6 +16,7 @@ type FunctionType =
 type ClassType =
     | NONE
     | CLASS
+    | SUBCLASS
 
 type Resolver(interpreter: Interpreter) =
 
@@ -125,6 +126,13 @@ type Resolver(interpreter: Interpreter) =
 
                 resolveVariable keyword
 
+            override x.visitSuper keyword method =
+                match currentClassType with
+                | ClassType.NONE -> lox.error keyword "Can't use 'super' outside of a class."
+                | SUBCLASS -> ()
+                | _ -> lox.error keyword "Can't use 'super' in a class with no superclass."
+
+                resolveVariable keyword
 
 
         }
@@ -177,12 +185,27 @@ type Resolver(interpreter: Interpreter) =
                     resolveExpr expr
                 | None -> ()
 
-            override x.visitClass name methods =
+            override x.visitClass name methods superclass =
                 declare name
                 define name
 
+                superclass
+                |> Option.iter (fun superclass ->
+                    if name.lexeme = superclass.lexeme then
+                        lox.error superclass "A class can't inherit from itself."
+
+                    defineByName "super"
+
+                    resolveVariable superclass)
+
                 use _ = createScope ()
-                use _ = withinClass CLASS
+
+                let classType =
+                    match superclass with
+                    | Some _ -> SUBCLASS
+                    | None -> CLASS
+
+                use _ = withinClass classType
                 defineByName "this"
 
                 methods

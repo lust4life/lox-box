@@ -183,6 +183,11 @@ type Parser(tokens: Token list) =
         | THIS ->
             advance ()
             This(tk)
+        | SUPER ->
+            advance ()
+            consume DOT "Expect '.' after 'super'." |> ignore
+            let method = consume IDENTIFIER "Expect superclass method name."
+            Super(tk, method)
         | IDENTIFIER ->
             advance ()
             Variable(tk)
@@ -316,6 +321,11 @@ type Parser(tokens: Token list) =
         advanceIfMatch [ CLASS ]
         |> Option.map (fun _ ->
             let name = consume IDENTIFIER "Expect class name."
+
+            let superclass =
+                advanceIfMatch [ LESS ]
+                |> Option.map (fun _ -> consume IDENTIFIER "Expect superclass name.")
+
             consume LEFT_BRACE "Expect '{' before class body." |> ignore
 
             let methods =
@@ -324,7 +334,7 @@ type Parser(tokens: Token list) =
 
             consume RIGHT_BRACE "Expect '}' after class body." |> ignore
 
-            Class(name, methods))
+            Class(name, methods, superclass))
 
     and func (kind: string) =
         let name = consume IDENTIFIER $"Expect {kind} name."

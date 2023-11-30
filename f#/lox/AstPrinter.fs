@@ -72,6 +72,9 @@ type AstPrinter() =
 
             override x.visitThis keyword = "this"
 
+            override x.visitSuper keyword method =
+                parenthesize2 "super" [ method ] x.visit
+
         }
 
 

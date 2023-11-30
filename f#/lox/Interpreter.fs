@@ -143,6 +143,10 @@ type Interpreter() as interpreter =
 
             override x.visitThis keyword = lookUpVariable keyword
 
+            override x.visitSuper keyword method =
+                let super = lookUpVariable keyword :?> LoxInstance
+                super.get method
+
 
         }
 
@@ -209,8 +213,15 @@ type Interpreter() as interpreter =
                   let res = expr |> Option.map evaluate |> Option.toObj
                   raise (ReturnError(res))
 
-              override x.visitClass name methods =
-                  let loxClass = LoxClass(name.lexeme, methods, localEnv)
+              override x.visitClass name methods superclass =
+                  let superclass =
+                      superclass
+                      |> Option.map (fun superclass ->
+                          match lookUpVariable superclass with
+                          | :? LoxClass as superclass -> superclass
+                          | _ -> raise (RuntimeError(superclass, "Superclass must be a class.")))
+
+                  let loxClass = LoxClass(name.lexeme, methods, localEnv, superclass)
                   localEnv.define name loxClass
 
 
@@ -272,7 +283,7 @@ and LoxFunction(func: Fun, closure: Environment, isInitializer: bool) =
         member x.Arity = func.paramList.Length
 
 
-and LoxClass(name, methods, env) =
+and LoxClass(name, methods, env, superclass) =
     let methods =
         methods
         |> List.map (fun method -> method.name.lexeme, LoxFunction(method, env, method.name.lexeme = "init"))
@@ -283,13 +294,18 @@ and LoxClass(name, methods, env) =
     member x.findMethod name =
         match methods.TryGetValue name with
         | true, method -> Some method
-        | _ -> None
+        | _ -> superclass |> Option.bind (fun superclass -> superclass.findMethod name)
 
     override x.ToString() = name
 
     interface LoxCallable with
         member x.call (interpreter: Interpreter) (args: obj list) : obj =
             let instance = LoxInstance(x)
+
+            superclass
+            |> Option.iter (fun superclass ->
+                let superInstance = LoxInstance(superclass)
+                env.defineByName "super" superInstance)
 
             match x.findMethod "init" with
             | Some initializer ->

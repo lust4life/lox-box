@@ -12,7 +12,7 @@ type Stmt =
     | While of condition: Expr * body: Stmt
     | FunDeclar of Fun
     | Return of keyword: Token * expr: Expr option
-    | Class of name: Token * methods: Fun list
+    | Class of name: Token * methods: Fun list * superclass: Token option
 
 and Fun =
     { name: Token
@@ -32,7 +32,7 @@ type StmtVisitor() =
         | While(condition, body) -> x.visitWhile condition body
         | FunDeclar func -> x.visitFunDeclar func
         | Return(keyword, expr) -> x.visitReturn keyword expr
-        | Class(name, methods) -> x.visitClass name methods
+        | Class(name, methods, superclass) -> x.visitClass name methods superclass
 
     abstract visitPrint: Expr -> unit
     abstract visitExpression: Expr -> unit
@@ -42,4 +42,4 @@ type StmtVisitor() =
     abstract visitWhile: Expr -> Stmt -> unit
     abstract visitFunDeclar: Fun -> unit
     abstract visitReturn: Token -> Expr option -> unit
-    abstract visitClass: Token -> Fun list -> unit
+    abstract visitClass: Token -> Fun list -> Token option -> unit
