@@ -1,45 +1,63 @@
-namespace lox.stmt
+namespace rec lox.stmt
 
 open lox.expr
 open lox.token
 
 type Stmt =
-    | Expression of Expr
-    | Print of Expr
-    | VarDeclar of Token * Expr option
-    | Block of Stmt list
-    | If of condition: Expr * thenPart: Stmt * elsePart: Stmt option
-    | While of condition: Expr * body: Stmt
-    | FunDeclar of Fun
-    | Return of keyword: Token * expr: Expr option
-    | Class of name: Token * methods: Fun list * superclass: Token option
+    abstract accept: StmtVisitor<'R> -> 'R
 
-and Fun =
+type StmtVisitor<'R> =
+    abstract visitPrint: Expr -> 'R
+    abstract visitExpression: Expr -> 'R
+    abstract visitVarDeclar: Token -> Expr option -> 'R
+    abstract visitBlock: Stmt list -> 'R
+    abstract visitIf: Expr -> Stmt -> Stmt option -> 'R
+    abstract visitWhile: Expr -> Stmt -> 'R
+    abstract visitFunDeclar: Fun -> 'R
+    abstract visitReturn: Token -> Expr option -> 'R
+    abstract visitClass: Token -> Fun list -> Token option -> 'R
+
+type Expression(expr: Expr) =
+    interface Stmt with
+        member x.accept visitor = visitor.visitExpression expr
+
+type Print(expr: Expr) =
+    interface Stmt with
+        member x.accept visitor = visitor.visitPrint expr
+
+type VarDeclar(name: Token, expr: Expr option) =
+    interface Stmt with
+        member x.accept visitor = visitor.visitVarDeclar name expr
+
+type Block(stmts: Stmt list) =
+    member x.stmts = stmts
+
+    interface Stmt with
+        member x.accept visitor = visitor.visitBlock stmts
+
+type If(condition: Expr, thenPart: Stmt, elsePart: Stmt option) =
+    interface Stmt with
+        member x.accept visitor =
+            visitor.visitIf condition thenPart elsePart
+
+type While(condition: Expr, body: Stmt) =
+    interface Stmt with
+        member x.accept visitor = visitor.visitWhile condition body
+
+type FunDeclar(func: Fun) =
+    interface Stmt with
+        member x.accept visitor = visitor.visitFunDeclar func
+
+type Return(keyword: Token, expr: Expr option) =
+    interface Stmt with
+        member x.accept visitor = visitor.visitReturn keyword expr
+
+type Class(name: Token, methods: Fun list, superclass: Token option) =
+    interface Stmt with
+        member x.accept visitor =
+            visitor.visitClass name methods superclass
+
+type Fun =
     { name: Token
       paramList: Token list
       body: Stmt list }
-
-
-[<AbstractClass>]
-type StmtVisitor() =
-    member x.visit(stmt: Stmt) =
-        match stmt with
-        | Print expr -> x.visitPrint expr
-        | Expression expr -> x.visitExpression expr
-        | VarDeclar(name: Token, expr) -> x.visitVarDeclar name expr
-        | Block stmts -> x.visitBlock stmts
-        | If(condition, thenPart, elsePart) -> x.visitIf condition thenPart elsePart
-        | While(condition, body) -> x.visitWhile condition body
-        | FunDeclar func -> x.visitFunDeclar func
-        | Return(keyword, expr) -> x.visitReturn keyword expr
-        | Class(name, methods, superclass) -> x.visitClass name methods superclass
-
-    abstract visitPrint: Expr -> unit
-    abstract visitExpression: Expr -> unit
-    abstract visitVarDeclar: Token -> Expr option -> unit
-    abstract visitBlock: Stmt list -> unit
-    abstract visitIf: Expr -> Stmt -> Stmt option -> unit
-    abstract visitWhile: Expr -> Stmt -> unit
-    abstract visitFunDeclar: Fun -> unit
-    abstract visitReturn: Token -> Expr option -> unit
-    abstract visitClass: Token -> Fun list -> Token option -> unit

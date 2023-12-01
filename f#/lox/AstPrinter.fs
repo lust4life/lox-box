@@ -37,45 +37,41 @@ type AstPrinter() =
         }
         |> System.String.Concat
 
-    let exprVisitor =
-        { new ExprVisitor<string>() with
-            override x.visitLiteral value =
-                match value with
-                | null -> "nil"
-                | :? double as number when Double.IsInteger(number) -> sprintf "%.1f" number
-                | _ -> value.ToString()
+    member x.print(expr: Expr) = expr.accept x
 
-            override x.visitUnary(operator, right) =
-                parenthesize operator.lexeme [ right ] x.visit
+    interface ExprVisitor<string> with
+        override x.visitLiteral value =
+            match value with
+            | null -> "nil"
+            | :? double as number when Double.IsInteger(number) -> sprintf "%.1f" number
+            | _ -> value.ToString()
 
-            override x.visitBinary(left, operator, right) =
-                parenthesize operator.lexeme [ left; right ] x.visit
+        override x.visitUnary operator right =
+            parenthesize operator.lexeme [ right ] x.print
 
-            override x.visitGrouping expr = parenthesize "group" [ expr ] x.visit
-            override x.visitVariable name = name.lexeme
+        override x.visitBinary left operator right =
+            parenthesize operator.lexeme [ left; right ] x.print
 
-            override x.visitAssign(name, value) =
-                parenthesize2 "=" [ name.lexeme; value ] x.visit
+        override x.visitGrouping expr = parenthesize "group" [ expr ] x.print
+        override x.visitVariable name = name.lexeme
 
-
-            override x.visitLogical left operator right =
-                parenthesize operator.lexeme [ left; right ] x.visit
-
-            override x.visitCall callee args paren =
-                parenthesize2 "call" (callee :: args |> List.map box) x.visit
-
-            override x.visitGet callee name =
-                parenthesize2 "." [ callee; name.lexeme ] x.visit
-
-            override x.visitSet callee name value =
-                parenthesize2 "=" [ callee; name.lexeme; value ] x.visit
-
-            override x.visitThis keyword = "this"
-
-            override x.visitSuper keyword method =
-                parenthesize2 "super" [ method ] x.visit
-
-        }
+        override x.visitAssign name value =
+            parenthesize2 "=" [ name.lexeme; value ] x.print
 
 
-    member x.print = exprVisitor.visit
+        override x.visitLogical left operator right =
+            parenthesize operator.lexeme [ left; right ] x.print
+
+        override x.visitCall callee args paren =
+            parenthesize2 "call" (callee :: args |> List.map box) x.print
+
+        override x.visitGet callee name =
+            parenthesize2 "." [ callee; name.lexeme ] x.print
+
+        override x.visitSet callee name value =
+            parenthesize2 "=" [ callee; name.lexeme; value ] x.print
+
+        override x.visitThis keyword = "this"
+
+        override x.visitSuper keyword method =
+            parenthesize2 "super" [ method ] x.print

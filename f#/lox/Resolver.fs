@@ -81,147 +81,144 @@ type Resolver(interpreter: Interpreter) =
 
         func.body |> List.iter resolve
 
-    let exprVisitor =
-        { new UnitExprVisitor() with
-            override x.visitLiteral value = ()
-
-            override x.visitUnary(operator, right) = x.visit (right)
-
-            override x.visitBinary(left, operator, right) =
-                x.visit left
-                x.visit right
+    member x.resolve(expr: Expr) = expr.accept x |> ignore
+    member x.resolve(stmt: Stmt) = stmt.accept x |> ignore
+    member x.resolve(stmts: Stmt seq) = stmts |> Seq.iter x.resolve
 
 
-            override x.visitVariable name =
-                match scopes.TryPeek() with
-                | true, scope ->
-                    match scope.TryGetValue name.lexeme with
-                    | true, false -> lox.error name "Can't read local variable in its own initializer."
-                    | _ -> ()
+    interface ExprVisitor<obj> with
+        override x.visitLiteral value = ()
+
+        override x.visitUnary operator right = x.resolve right
+
+        override x.visitBinary left operator right =
+            x.resolve left
+            x.resolve right
+
+        override x.visitVariable name =
+            match scopes.TryPeek() with
+            | true, scope ->
+                match scope.TryGetValue name.lexeme with
+                | true, false -> lox.error name "Can't read local variable in its own initializer."
                 | _ -> ()
+            | _ -> ()
 
-                resolveVariable name
+            resolveVariable name
 
-            override x.visitAssign(name, expr) =
-                x.visit expr
-                resolveVariable name
+        override x.visitAssign name expr =
+            x.resolve expr
+            resolveVariable name
 
-            override x.visitLogical left operator right =
-                x.visit left
-                x.visit right
+        override x.visitLogical left operator right =
+            x.resolve left
+            x.resolve right
 
-            override x.visitCall callee args paren =
-                x.visit callee
-                args |> List.iter x.visit
+        override x.visitCall callee args paren =
+            x.resolve callee
+            args |> List.iter x.resolve |> box
 
-            override x.visitGet callee name = x.visit callee
+        override x.visitGet callee name = x.resolve callee
 
-            override x.visitSet callee name value =
-                x.visit value
-                x.visit callee
+        override x.visitSet callee name value =
+            x.resolve value
+            x.resolve callee
 
-            override x.visitThis keyword =
-                if currentClassType = ClassType.NONE then
-                    lox.error keyword "Can't use 'this' outside of a class."
+        override x.visitThis keyword =
+            if currentClassType = ClassType.NONE then
+                lox.error keyword "Can't use 'this' outside of a class."
 
-                resolveVariable keyword
+            resolveVariable keyword
 
-            override x.visitSuper keyword method =
-                match currentClassType with
-                | ClassType.NONE -> lox.error keyword "Can't use 'super' outside of a class."
-                | SUBCLASS -> ()
-                | _ -> lox.error keyword "Can't use 'super' in a class with no superclass."
+        override x.visitSuper keyword method =
+            match currentClassType with
+            | ClassType.NONE -> lox.error keyword "Can't use 'super' outside of a class."
+            | SUBCLASS -> ()
+            | _ -> lox.error keyword "Can't use 'super' in a class with no superclass."
 
-                resolveVariable keyword
+            resolveVariable keyword
 
-
-        }
-
-    let resolveExpr = exprVisitor.visit
-
-    let stmtVisitor =
-        { new StmtVisitor() with
-            override x.visitExpression expr = resolveExpr expr
-
-            override x.visitPrint expr = resolveExpr expr
-
-            override x.visitVarDeclar name expr =
-                declare name
-                expr |> Option.iter resolveExpr
-                define name
+        override x.visitGrouping expr = ()
 
 
-            override x.visitBlock stmts =
-                use _ = createScope ()
-                stmts |> List.iter x.visit
+    interface StmtVisitor<obj> with
+        override x.visitExpression expr = x.resolve expr
+
+        override x.visitPrint expr = x.resolve expr
+
+        override x.visitVarDeclar name expr =
+            declare name
+            expr |> Option.iter x.resolve
+            define name
 
 
-            override x.visitIf condition thenPart elsePart =
-                resolveExpr condition
-                x.visit thenPart
-
-                match elsePart with
-                | Some elsePart -> x.visit elsePart
-                | None -> ()
-
-            override x.visitWhile condition body =
-                resolveExpr condition
-                x.visit body
-
-            override x.visitFunDeclar func =
-                declare func.name
-                define func.name
-                resolveFunc func FUNCTION x.visit
-
-            override x.visitReturn keyword expr =
-                if currentFunctionType = FunctionType.NONE then
-                    lox.error keyword "Can't return from top-level code."
-
-                match expr with
-                | Some expr ->
-                    if currentFunctionType = INITIALIZER then
-                        lox.error keyword "Can't return a value from an initializer."
-
-                    resolveExpr expr
-                | None -> ()
-
-            override x.visitClass name methods superclass =
-                declare name
-                define name
-
-                let superScope =
-                    superclass
-                    |> Option.map (fun superclass ->
-                        if name.lexeme = superclass.lexeme then
-                            lox.error superclass "A class can't inherit from itself."
-
-                        resolveVariable superclass
-
-                        let superScope = createScope ()
-                        defineByName "super"
-
-                        superScope)
-
-                let thisScope = createScope ()
-
-                let classType =
-                    match superclass with
-                    | Some _ -> SUBCLASS
-                    | None -> CLASS
-
-                use _ = withinClass classType
-                defineByName "this"
-
-                methods
-                |> List.iter (fun func ->
-                    let funcType = if func.name.lexeme = "init" then INITIALIZER else METHOD
-                    resolveFunc func funcType x.visit)
-
-                thisScope.Dispose()
-
-                superScope |> Option.iter (fun x -> x.Dispose())
+        override x.visitBlock stmts =
+            use _ = createScope ()
+            x.resolve stmts
 
 
-        }
+        override x.visitIf condition thenPart elsePart =
+            x.resolve condition
+            x.resolve thenPart
 
-    member x.resolve(stmts: Stmt seq) = stmts |> Seq.iter stmtVisitor.visit
+            match elsePart with
+            | Some elsePart -> x.resolve elsePart
+            | None -> ()
+
+        override x.visitWhile condition body =
+            x.resolve condition
+            x.resolve body
+
+        override x.visitFunDeclar func =
+            declare func.name
+            define func.name
+            resolveFunc func FUNCTION x.resolve
+
+        override x.visitReturn keyword expr =
+            if currentFunctionType = FunctionType.NONE then
+                lox.error keyword "Can't return from top-level code."
+
+            match expr with
+            | Some expr ->
+                if currentFunctionType = INITIALIZER then
+                    lox.error keyword "Can't return a value from an initializer."
+
+                x.resolve expr
+            | None -> ()
+
+        override x.visitClass name methods superclass =
+            declare name
+            define name
+
+            let superScope =
+                superclass
+                |> Option.map (fun superclass ->
+                    if name.lexeme = superclass.lexeme then
+                        lox.error superclass "A class can't inherit from itself."
+
+                    resolveVariable superclass
+
+                    let superScope = createScope ()
+                    defineByName "super"
+
+                    superScope)
+
+            let thisScope = createScope ()
+
+            let classType =
+                match superclass with
+                | Some _ -> SUBCLASS
+                | None -> CLASS
+
+            use _ = withinClass classType
+            defineByName "this"
+
+            methods
+            |> List.iter (fun func ->
+                let funcType = if func.name.lexeme = "init" then INITIALIZER else METHOD
+                resolveFunc func funcType x.resolve)
+
+            thisScope.Dispose()
+
+            superScope |> Option.iter (fun x -> x.Dispose())
+
+            ()

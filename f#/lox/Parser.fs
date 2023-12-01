@@ -55,7 +55,7 @@ type Parser(tokens: Token list) =
         |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) msg)
 
 
-    let rec makeCallOrGet callee argMaker =
+    let rec makeCallOrGet (callee: Expr) argMaker =
         advanceIfMatch [ LEFT_PAREN; DOT ]
         |> Option.map (function
             | tk when tk.tokenType = LEFT_PAREN ->
@@ -106,23 +106,23 @@ type Parser(tokens: Token list) =
 
     let rec expression () = assignment ()
 
-    and assignment () =
+    and assignment () : Expr =
         // we need to take = as an binary operator, as we can't forseen the later assign operator
         let lv = logicOr ()
 
         match advanceIfMatch [ EQUAL ] with
         | Some equalTk ->
             match lv with
-            | Variable name ->
+            | :? Variable as lv ->
                 let rv = assignment ()
-                Assign(name, rv)
-            | Get(callee, name) ->
+                Assign(lv.name, rv)
+            | :? Get as lv ->
                 let rv = assignment ()
-                Set(callee, name, rv)
+                Set(lv.callee, lv.name, rv)
             | _ -> raiseParseError equalTk "Invalid assignment target."
         | None -> lv
 
-    and logicOr () =
+    and logicOr () : Expr =
         let left = logicAnd ()
         makeLogical left [ OR ] logicAnd
 
@@ -146,18 +146,18 @@ type Parser(tokens: Token list) =
         let left = unary ()
         makeBinary left [ SLASH; STAR ] unary
 
-    and unary () =
+    and unary () : Expr =
         match advanceIfMatch [ BANG; MINUS ] with
         | Some operator ->
             let right = unary ()
             Unary(operator, right)
         | None -> call ()
 
-    and call () =
+    and call () : Expr =
         let callee = primary ()
         makeCallOrGet callee expression
 
-    and primary () =
+    and primary () : Expr =
         let tk = currentToken ()
         let tokenType = tk.tokenType
 
@@ -193,7 +193,7 @@ type Parser(tokens: Token list) =
             Variable(tk)
         | _ -> raiseParseError tk "Expect expression."
 
-    and statement () =
+    and statement () : Stmt =
         printStmt ()
         |> Option.orElseWith ifStmt
         |> Option.orElseWith whileStmt
@@ -262,7 +262,7 @@ type Parser(tokens: Token list) =
                 | Some _ -> None
                 | None -> varDecl () |> Option.defaultWith exprStmt |> Some
 
-            let condition =
+            let condition: Expr =
                 match advanceIfMatch [ SEMICOLON ] with
                 | Some _ -> Literal(true)
                 | None ->
@@ -285,7 +285,7 @@ type Parser(tokens: Token list) =
                   | Some initializer -> yield initializer
                   | None -> ()
 
-                  let whileBody =
+                  let whileBody: Stmt =
                       match increment with
                       | Some increment -> Block([ body; Expression(increment) ])
                       | None -> body
@@ -345,7 +345,7 @@ type Parser(tokens: Token list) =
         let body =
             block ()
             |> Option.map (function
-                | Block(stmts) -> stmts
+                | :? Block as block -> block.stmts
                 | _ -> failwith "should not happen, must be a block here")
             |> Option.defaultWith (fun _ -> raiseParseError (currentToken ()) $"Expect '{{' before {kind} body.")
 
