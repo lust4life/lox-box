@@ -23,7 +23,7 @@ type Interpreter() as interpreter =
                   member x.ToString() = "<native fn>"
               interface LoxCallable with
                   member x.call interpreter args =
-                      System.DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                      float (System.DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 1000.0 |> box
 
                   member x.Arity = 0
 
