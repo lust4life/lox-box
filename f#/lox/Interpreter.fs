@@ -36,6 +36,10 @@ type Interpreter() as interpreter =
         | true, depth -> localEnv.getAt depth name
         | _ -> globalEnv.get name
 
+    let lookUpThisBySuper superTk =
+        let depth = resolvedState[superTk]
+        localEnv.getAtByName (depth - 1) "this"
+
     let assignVariable name value =
         match resolvedState.TryGetValue name with
         | true, depth -> localEnv.assignAt depth name value
@@ -144,11 +148,15 @@ type Interpreter() as interpreter =
             override x.visitThis keyword = lookUpVariable keyword
 
             override x.visitSuper keyword method =
-                let super = lookUpVariable keyword :?> LoxInstance
-                super.get method
+                let super = lookUpVariable keyword :?> LoxClass
 
+                let method =
+                    super.findMethod method.lexeme
+                    |> Option.defaultWith (fun _ ->
+                        raise (RuntimeError(method, $"Undefined property '{method.lexeme}'.")))
 
-        }
+                let thisInstance = lookUpThisBySuper keyword
+                method.bind thisInstance }
 
     let evaluate = exprVisitor.visit
 
@@ -200,7 +208,7 @@ type Interpreter() as interpreter =
                       | Some elsePart -> x.visit elsePart
                       | None -> ()
 
-              override x.visitWhile condition body =
+              override x.visitWhile condition (body: Stmt) =
                   while evaluate condition |> castTruthy do
                       x.visit body
 
@@ -214,14 +222,22 @@ type Interpreter() as interpreter =
                   raise (ReturnError(res))
 
               override x.visitClass name methods superclass =
+                  let previousEnv = localEnv
+
                   let superclass =
                       superclass
                       |> Option.map (fun superclass ->
                           match lookUpVariable superclass with
-                          | :? LoxClass as superclass -> superclass
+                          | :? LoxClass as superclass ->
+                              localEnv <- Environment(Some previousEnv)
+                              localEnv.defineByName "super" superclass
+                              superclass
                           | _ -> raise (RuntimeError(superclass, "Superclass must be a class.")))
 
                   let loxClass = LoxClass(name.lexeme, methods, localEnv, superclass)
+
+                  superclass |> Option.iter (fun _ -> localEnv <- previousEnv)
+
                   localEnv.define name loxClass
 
 
@@ -291,7 +307,7 @@ and LoxClass(name, methods, env, superclass) =
 
     member x.name = name
 
-    member x.findMethod name =
+    member x.findMethod(name: string) : LoxFunction option =
         match methods.TryGetValue name with
         | true, method -> Some method
         | _ -> superclass |> Option.bind (fun superclass -> superclass.findMethod name)
@@ -301,11 +317,6 @@ and LoxClass(name, methods, env, superclass) =
     interface LoxCallable with
         member x.call (interpreter: Interpreter) (args: obj list) : obj =
             let instance = LoxInstance(x)
-
-            superclass
-            |> Option.iter (fun superclass ->
-                let superInstance = LoxInstance(superclass)
-                env.defineByName "super" superInstance)
 
             match x.findMethod "init" with
             | Some initializer ->
@@ -332,7 +343,7 @@ and LoxInstance(klass: LoxClass) =
         | true, value -> value
         | _ ->
             match klass.findMethod name.lexeme with
-            | Some value -> value.bind (x)
+            | Some value -> value.bind x
             | _ -> raise (RuntimeError(name, $"Undefined property '{name.lexeme}'."))
 
     member x.set name value = fields[name.lexeme] <- value

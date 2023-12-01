@@ -189,16 +189,20 @@ type Resolver(interpreter: Interpreter) =
                 declare name
                 define name
 
-                superclass
-                |> Option.iter (fun superclass ->
-                    if name.lexeme = superclass.lexeme then
-                        lox.error superclass "A class can't inherit from itself."
+                let superScope =
+                    superclass
+                    |> Option.map (fun superclass ->
+                        if name.lexeme = superclass.lexeme then
+                            lox.error superclass "A class can't inherit from itself."
 
-                    defineByName "super"
+                        resolveVariable superclass
 
-                    resolveVariable superclass)
+                        let superScope = createScope ()
+                        defineByName "super"
 
-                use _ = createScope ()
+                        superScope)
+
+                let thisScope = createScope ()
 
                 let classType =
                     match superclass with
@@ -211,6 +215,13 @@ type Resolver(interpreter: Interpreter) =
                 methods
                 |> List.iter (fun func ->
                     let funcType = if func.name.lexeme = "init" then INITIALIZER else METHOD
-                    resolveFunc func funcType x.visit) }
+                    resolveFunc func funcType x.visit)
+
+                thisScope.Dispose()
+
+                superScope |> Option.iter (fun x -> x.Dispose())
+
+
+        }
 
     member x.resolve(stmts: Stmt seq) = stmts |> Seq.iter stmtVisitor.visit
