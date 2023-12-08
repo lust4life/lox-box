@@ -1,13 +1,7 @@
+use crate::op::OpCode;
 use std::{alloc, alloc::Layout, any::type_name, ops::Deref, ptr};
 
-#[repr(u8)]
-#[derive(Debug)]
-pub enum OpCode {
-    OpReturn,
-    OpConstant,
-}
-
-struct Vec<T> {
+pub struct Vec<T> {
     ptr: *mut T,
     count: usize,
     capacity: usize,
@@ -39,7 +33,7 @@ impl<T> Vec<T> {
         };
     }
 
-    fn write_item(&mut self, item: T) {
+    fn push(&mut self, item: T) {
         if self.capacity <= self.count {
             self.grow_array();
         }
@@ -61,14 +55,14 @@ impl<T> Vec<T> {
     fn grow_array(&mut self) {
         let old_capacity = self.capacity;
         let new_capacity = self.grow_capacity();
-        let new_layout = Layout::array::<u8>(new_capacity).unwrap();
+        let new_layout = Layout::array::<T>(new_capacity).unwrap();
 
         let new_ptr = if old_capacity == 0 {
             // allcate
             unsafe { alloc::alloc(new_layout) }
         } else {
             // relocate
-            let old_layout = Layout::array::<u8>(old_capacity).unwrap();
+            let old_layout = Layout::array::<T>(old_capacity).unwrap();
             unsafe { alloc::realloc(self.ptr.cast(), old_layout, new_layout.size()) }
         };
         if new_ptr.is_null() {
@@ -80,15 +74,15 @@ impl<T> Vec<T> {
     }
 }
 
-type Value = f64;
-struct Chunk {
+pub type Value = f64;
+pub struct Chunk {
     code: Vec<u8>,
     lines: Vec<i32>,
     contants: Vec<Value>,
 }
 
 impl Chunk {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             code: Vec::new(),
             contants: Vec::new(),
@@ -96,9 +90,9 @@ impl Chunk {
         }
     }
 
-    fn write_chunk(&mut self, byte: u8, line: i32) {
-        self.code.write_item(byte);
-        self.lines.write_item(line);
+    pub fn write_chunk(&mut self, byte: u8, line: i32) {
+        self.code.push(byte);
+        self.lines.push(line);
     }
 
     fn disassemble(&self, name: &str) {
@@ -109,7 +103,12 @@ impl Chunk {
         }
     }
 
-    fn disassemble_instruction(&self, offset: usize) -> usize {
+    pub fn get_one<T>(&self, offset: usize) -> &T {
+        let instruction = unsafe { &*(self.code.ptr.add(offset) as *const T) };
+        return instruction;
+    }
+
+    pub fn disassemble_instruction(&self, offset: usize) -> usize {
         print!("{offset:04} ");
 
         if offset > 0 && self.lines[offset] == self.lines[offset - 1] {
@@ -123,10 +122,12 @@ impl Chunk {
         let delta = match instruction {
             OpCode::OpReturn => simple_instruction("OP_RETURN"),
             OpCode::OpConstant => self.constant_instruction("OP_CONSTANT", offset),
-            _ => {
-                println!("Unknow opcode {instruction:?}");
-                return 1;
-            }
+            OpCode::OpAdd => simple_instruction("OP_ADD"),
+            OpCode::OpSubtract => simple_instruction("OP_SUBTRACT"),
+            OpCode::OpMultiply => simple_instruction("OP_MULTIPLY"),
+            OpCode::OpDivide => simple_instruction("OP_DIVIDE"),
+            OpCode::OpNegate => simple_instruction("OP_NEGATE"),
+            _ => panic!("Unknow opcode {instruction:?}"),
         };
 
         return offset + delta;
@@ -138,15 +139,21 @@ impl Chunk {
     }
 
     fn constant_instruction(&self, name: &str, offset: usize) -> usize {
-        let constant_idx = unsafe { *self.code.ptr.add(offset + 1) };
-        let constant_value = unsafe { *self.contants.ptr.add(constant_idx as _) };
-        println!("{name:-16} {constant_idx:4} '{constant_value}'");
+        let constant_idx = self.code[offset + 1];
+        let constant_value = self.contants[constant_idx as usize];
+        println!("{name:-16} {constant_idx:4} '{constant_value:.2}'");
         return 2;
     }
 
-    fn add_constant(&mut self, value: Value) -> usize {
-        self.contants.write_item(value);
+    pub fn add_constant(&mut self, value: Value) -> usize {
+        self.contants.push(value);
         return self.contants.count - 1;
+    }
+
+    pub fn get_constant(&self, offset: usize) -> Value {
+        let constant_idx = self.code[offset];
+        let constant_value = self.contants[constant_idx as usize];
+        return constant_value;
     }
 }
 
