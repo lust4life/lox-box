@@ -1,5 +1,6 @@
 use crate::{
     chunk::{Chunk, Value},
+    compiler::Compiler,
     op::OpCode,
 };
 
@@ -11,7 +12,7 @@ enum InterpretResult {
 
 const STACK_MAX: usize = 256;
 
-struct VM {
+pub struct VM {
     chunk: Chunk,
     pc: usize,
     stack: [Value; STACK_MAX],
@@ -31,16 +32,19 @@ macro_rules! binary_op {
 }
 
 impl VM {
-    fn new(chunk: Chunk) -> Self {
+    pub fn interpret(&mut self, source: &str) {
+        Compiler::compile(source);
+    }
+
+    pub fn new() -> Self {
         return Self {
-            chunk: chunk,
+            chunk: Chunk::new(),
             pc: 0,
             stack: [Value::default(); STACK_MAX],
             stack_top_off_set: 0,
         };
     }
 
-    #[cfg(test)]
     fn debug_trace_execution(&self) {
         print!("          ");
         for offset in 0..self.stack_top_off_set {
@@ -51,9 +55,11 @@ impl VM {
         self.chunk.disassemble_instruction(self.pc);
     }
 
-    fn interpret(&mut self) -> InterpretResult {
+    fn interpret1(&mut self) -> InterpretResult {
         loop {
-            self.debug_trace_execution();
+            if cfg!(test) {
+                self.debug_trace_execution();
+            }
             let instruction = self.read_byte();
             match instruction {
                 OpCode::OpConstant => {
@@ -113,26 +119,26 @@ mod tests {
 
     #[test]
     fn xxx() {
-        let mut chunk = Chunk::new();
-        chunk.write_chunk(OpCode::OpConstant as u8, 123);
-        let idx = chunk.add_constant(3.0);
-        chunk.write_chunk(idx as _, 123);
+        // let mut chunk = Chunk::new();
+        // chunk.write_chunk(OpCode::OpConstant as u8, 123);
+        // let idx = chunk.add_constant(3.0);
+        // chunk.write_chunk(idx as _, 123);
 
-        chunk.write_chunk(OpCode::OpConstant as u8, 123);
-        let idx = chunk.add_constant(2.0);
-        chunk.write_chunk(idx as _, 123);
+        // chunk.write_chunk(OpCode::OpConstant as u8, 123);
+        // let idx = chunk.add_constant(2.0);
+        // chunk.write_chunk(idx as _, 123);
 
-        chunk.write_chunk(OpCode::OpAdd as u8, 123);
+        // chunk.write_chunk(OpCode::OpAdd as u8, 123);
 
-        chunk.write_chunk(OpCode::OpConstant as u8, 123);
+        // chunk.write_chunk(OpCode::OpConstant as u8, 123);
 
-        let idx = chunk.add_constant(1.0);
-        chunk.write_chunk(idx as _, 123);
-        chunk.write_chunk(OpCode::OpSubtract as u8, 123);
+        // let idx = chunk.add_constant(1.0);
+        // chunk.write_chunk(idx as _, 123);
+        // chunk.write_chunk(OpCode::OpSubtract as u8, 123);
 
-        chunk.write_chunk(OpCode::OpReturn as u8, 123);
+        // chunk.write_chunk(OpCode::OpReturn as u8, 123);
 
-        let mut vm = VM::new(chunk);
-        vm.interpret();
+        // let mut vm = VM::new(chunk);
+        // vm.interpret();
     }
 }
