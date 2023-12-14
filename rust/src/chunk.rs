@@ -1,5 +1,5 @@
 use crate::op::OpCode;
-use std::{alloc, alloc::Layout, any::type_name, ops::Deref, ptr};
+use std::{alloc, alloc::Layout, ops::Deref, ptr};
 
 pub struct Vec<T> {
     ptr: *mut T,
@@ -95,6 +95,7 @@ impl Chunk {
         self.lines.push(line);
     }
 
+    #[cfg(test)]
     fn disassemble(&self, name: &str) {
         println!("== {name} ==");
         let mut offset = 0;
@@ -127,7 +128,6 @@ impl Chunk {
             OpCode::OpMultiply => simple_instruction("OP_MULTIPLY"),
             OpCode::OpDivide => simple_instruction("OP_DIVIDE"),
             OpCode::OpNegate => simple_instruction("OP_NEGATE"),
-            _ => panic!("Unknow opcode {instruction:?}"),
         };
 
         return offset + delta;

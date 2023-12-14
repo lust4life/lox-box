@@ -8,7 +8,7 @@ use crate::{
     },
 };
 
-#[derive(PartialEq, PartialOrd, Debug)]
+#[derive(PartialEq, PartialOrd)]
 enum Precedence {
     PrecNone,
     PrecAssignment, // =
@@ -45,7 +45,6 @@ use Precedence::*;
 
 type ParseFun<'code, 'tk> = fn(&mut Parser<'code, 'tk>);
 
-#[derive(Debug)]
 struct ParseRule<'code, 'tk> {
     prefix: Option<ParseFun<'code, 'tk>>,
     infix: Option<ParseFun<'code, 'tk>>,
@@ -205,7 +204,6 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 rule.infix.expect("should have infix")(self);
             }
         } else {
-            println!("{:?}", rule);
             self.error_at(self.current, "Expect expression.");
             return;
         }
@@ -232,8 +230,12 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
             None as Option<ParseFun<'code, 'tk>>,
             PrecNone,
         ),
-        (TokenNumber, Some(Parser::number), None, PrecNone),
         (TokenLeftParen, Some(Parser::grouping), None, PrecNone),
+        (TokenRightParen, None, None, PrecNone),
+        (TokenLeftBrace, None, None, PrecNone),
+        (TokenRightBrace, None, None, PrecNone),
+        (TokenComma, None, None, PrecNone),
+        (TokenDot, None, None, PrecNone),
         (
             TokenMinus,
             Some(Parser::unary),
@@ -241,8 +243,35 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
             PrecTerm,
         ),
         (TokenPlus, None, Some(Parser::binary), PrecTerm),
-        (TokenStar, None, Some(Parser::binary), PrecFactor),
+        (TokenSemicolon, None, None, PrecNone),
         (TokenSlash, None, Some(Parser::binary), PrecFactor),
+        (TokenStar, None, Some(Parser::binary), PrecFactor),
+        (TokenBang, None, None, PrecNone),
+        (TokenBangEqual, None, None, PrecNone),
+        (TokenGreater, None, None, PrecNone),
+        (TokenGreaterEqual, None, None, PrecNone),
+        (TokenLess, None, None, PrecNone),
+        (TokenLessEqual, None, None, PrecNone),
+        (TokenIdentifier, None, None, PrecNone),
+        (TokenString, None, None, PrecNone),
+        (TokenNumber, Some(Parser::number), None, PrecNone),
+        (TokenAnd, None, None, PrecNone),
+        (TokenClass, None, None, PrecNone),
+        (TokenElse, None, None, PrecNone),
+        (TokenFalse, None, None, PrecNone),
+        (TokenFor, None, None, PrecNone),
+        (TokenFun, None, None, PrecNone),
+        (TokenIf, None, None, PrecNone),
+        (TokenNil, None, None, PrecNone),
+        (TokenOr, None, None, PrecNone),
+        (TokenPrint, None, None, PrecNone),
+        (TokenReturn, None, None, PrecNone),
+        (TokenSuper, None, None, PrecNone),
+        (TokenThis, None, None, PrecNone),
+        (TokenTrue, None, None, PrecNone),
+        (TokenVar, None, None, PrecNone),
+        (TokenWhile, None, None, PrecNone),
+        (TokenError, None, None, PrecNone),
         (TokenEOF, None, None, PrecNone),
     ];
 

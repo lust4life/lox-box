@@ -1,4 +1,4 @@
-use std::ops::{FromResidual, Try};
+use std::ops::FromResidual;
 
 use crate::{
     chunk::{Chunk, Value},
@@ -30,7 +30,7 @@ pub struct VM {
 }
 
 fn format_value(value: Value) -> String {
-    return format!("{value:.2}");
+    return format!("{value}");
 }
 
 macro_rules! binary_op {
@@ -129,6 +129,6 @@ mod tests {
 
     #[test]
     fn xxx() {
-        interpret("3+2-1*3+8/4+-1");
+        interpret("(5 - (3 - 1)) + -1");
     }
 }
