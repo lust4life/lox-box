@@ -1,6 +1,6 @@
 use std::{env, fs, io::Write, process::exit};
 
-use lox_box::vm::VM;
+use lox_box::vm;
 
 fn main() -> std::io::Result<()> {
     let args = env::args().collect::<Vec<String>>();
@@ -23,14 +23,12 @@ fn main() -> std::io::Result<()> {
 fn run_file(path: &str) -> std::io::Result<()> {
     let source = fs::read_to_string(path)?;
 
-    let mut vm = VM::new();
-    vm.interpret(&source);
+    vm::interpret(&source);
 
     return Ok(());
 }
 
 fn repl() -> std::io::Result<()> {
-    let mut vm = VM::new();
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
 
@@ -44,7 +42,7 @@ fn repl() -> std::io::Result<()> {
             break;
         }
 
-        vm.interpret(&line);
+        vm::interpret(&line);
     }
 
     return Ok(());

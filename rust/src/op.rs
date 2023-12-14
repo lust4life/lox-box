@@ -9,3 +9,9 @@ pub enum OpCode {
     OpDivide,
     OpNegate,
 }
+
+impl Into<u8> for OpCode {
+    fn into(self) -> u8 {
+        return self as _;
+    }
+}

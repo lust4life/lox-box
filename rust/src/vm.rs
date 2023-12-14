@@ -1,13 +1,23 @@
+use std::ops::{FromResidual, Try};
+
 use crate::{
     chunk::{Chunk, Value},
-    compiler::Compiler,
+    compiler,
     op::OpCode,
 };
 
-enum InterpretResult {
+pub enum InterpretResult {
     InterpretOk,
     InterpretCompileError,
     InterpretRuntimeError,
+}
+
+use InterpretResult::*;
+
+impl FromResidual<Option<std::convert::Infallible>> for InterpretResult {
+    fn from_residual(_: Option<std::convert::Infallible>) -> Self {
+        return InterpretCompileError;
+    }
 }
 
 const STACK_MAX: usize = 256;
@@ -19,8 +29,6 @@ pub struct VM {
     stack_top_off_set: usize,
 }
 
-use InterpretResult::*;
-
 fn format_value(value: Value) -> String {
     return format!("{value:.2}");
 }
@@ -31,14 +39,16 @@ macro_rules! binary_op {
     };
 }
 
-impl VM {
-    pub fn interpret(&mut self, source: &str) {
-        Compiler::compile(source);
-    }
+pub fn interpret(source: &str) -> InterpretResult {
+    let chunk = compiler::compile(source)?;
+    let mut vm = VM::new(chunk);
+    return vm.run();
+}
 
-    pub fn new() -> Self {
+impl VM {
+    pub fn new(chunk: Chunk) -> Self {
         return Self {
-            chunk: Chunk::new(),
+            chunk: chunk,
             pc: 0,
             stack: [Value::default(); STACK_MAX],
             stack_top_off_set: 0,
@@ -55,7 +65,7 @@ impl VM {
         self.chunk.disassemble_instruction(self.pc);
     }
 
-    fn interpret1(&mut self) -> InterpretResult {
+    fn run(&mut self) -> InterpretResult {
         loop {
             if cfg!(test) {
                 self.debug_trace_execution();
@@ -76,7 +86,7 @@ impl VM {
                 OpCode::OpDivide => binary_op!(self, /),
                 OpCode::OpReturn => {
                     println!("{}", format_value(self.pop()));
-                    return InterpretOk;
+                    return InterpretResult::InterpretOk;
                 }
             }
         }
@@ -114,31 +124,11 @@ impl VM {
 
 #[cfg(test)]
 mod tests {
-    use super::VM;
+    use super::{interpret, VM};
     use crate::{chunk::Chunk, op::OpCode};
 
     #[test]
     fn xxx() {
-        // let mut chunk = Chunk::new();
-        // chunk.write_chunk(OpCode::OpConstant as u8, 123);
-        // let idx = chunk.add_constant(3.0);
-        // chunk.write_chunk(idx as _, 123);
-
-        // chunk.write_chunk(OpCode::OpConstant as u8, 123);
-        // let idx = chunk.add_constant(2.0);
-        // chunk.write_chunk(idx as _, 123);
-
-        // chunk.write_chunk(OpCode::OpAdd as u8, 123);
-
-        // chunk.write_chunk(OpCode::OpConstant as u8, 123);
-
-        // let idx = chunk.add_constant(1.0);
-        // chunk.write_chunk(idx as _, 123);
-        // chunk.write_chunk(OpCode::OpSubtract as u8, 123);
-
-        // chunk.write_chunk(OpCode::OpReturn as u8, 123);
-
-        // let mut vm = VM::new(chunk);
-        // vm.interpret();
+        interpret("3+2-1*3+8/4+-1");
     }
 }

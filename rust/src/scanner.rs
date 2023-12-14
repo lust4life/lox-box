@@ -1,18 +1,4 @@
-pub struct Scanner<'a> {
-    source: &'a str,
-    current: usize,
-    each_start: usize,
-    line: usize,
-}
-
-#[derive(Debug)]
-pub struct Token<'a> {
-    pub lexeme: &'a str,
-    pub token_type: TokenType,
-    pub line: usize,
-}
-
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum TokenType {
     // Single-character tokens.
     TokenLeftParen,
@@ -64,8 +50,34 @@ pub enum TokenType {
     TokenEOF,
 }
 
-impl<'a: 'b, 'b> Scanner<'a> {
-    pub fn new(source: &'a str) -> Self {
+#[derive(Debug, Clone, Copy)]
+pub struct Token<'a> {
+    pub lexeme: &'a str,
+    pub token_type: TokenType,
+    pub line: usize,
+}
+
+pub static TOKEN_PLACEHOLDER: Token = Token {
+    lexeme: "should not occur",
+    token_type: TokenType::TokenError,
+    line: 0,
+};
+
+impl<'a> Token<'a> {
+    pub fn is_error_tk(&self) -> bool {
+        return self.token_type == TokenType::TokenError;
+    }
+}
+
+pub struct Scanner<'code> {
+    source: &'code str,
+    current: usize,
+    each_start: usize,
+    line: usize,
+}
+
+impl<'code: 'tk, 'tk> Scanner<'code> {
+    pub fn new(source: &'code str) -> Self {
         Self {
             source,
             current: 0,
@@ -74,7 +86,7 @@ impl<'a: 'b, 'b> Scanner<'a> {
         }
     }
 
-    pub fn scan_token(&mut self) -> Token<'b> {
+    pub fn scan_token(&mut self) -> Token<'tk> {
         use TokenType::*;
         loop {
             self.each_start = self.current;
@@ -131,7 +143,7 @@ impl<'a: 'b, 'b> Scanner<'a> {
         let end = std::cmp::min(self.source.len(), self.current + 1);
         return &self.source[self.current..end];
     }
-    fn current_lexeme(&self) -> &'b str {
+    fn current_lexeme(&self) -> &'tk str {
         let end = std::cmp::min(self.source.len(), self.current + 1);
         return &self.source[self.each_start..end];
     }
@@ -139,7 +151,7 @@ impl<'a: 'b, 'b> Scanner<'a> {
         return self.source.len() == self.current;
     }
 
-    fn token(&self, token_type: TokenType) -> Token<'b> {
+    fn token(&self, token_type: TokenType) -> Token<'tk> {
         let lexeme = self.current_lexeme();
         return Token {
             lexeme,
@@ -153,7 +165,7 @@ impl<'a: 'b, 'b> Scanner<'a> {
         item: &str,
         matched: TokenType,
         not_matched: TokenType,
-    ) -> Token<'b> {
+    ) -> Token<'tk> {
         if self.match_next(item) {
             self.advance();
             return self.token(matched);
@@ -186,7 +198,7 @@ impl<'a: 'b, 'b> Scanner<'a> {
         return matched;
     }
 
-    fn handle_string(&mut self) -> Token<'b> {
+    fn handle_string(&mut self) -> Token<'tk> {
         if self.advance_till("\"") {
             self.advance();
             return self.token(TokenType::TokenString);
@@ -195,7 +207,7 @@ impl<'a: 'b, 'b> Scanner<'a> {
         }
     }
 
-    fn handle_number(&mut self) -> Token<'b> {
+    fn handle_number(&mut self) -> Token<'tk> {
         while self.check_index(self.current + 1, is_digital) {
             self.advance();
         }
@@ -211,7 +223,7 @@ impl<'a: 'b, 'b> Scanner<'a> {
         return self.token(TokenType::TokenNumber);
     }
 
-    fn handle_keywords_and_identifier(&mut self) -> Token<'b> {
+    fn handle_keywords_and_identifier(&mut self) -> Token<'tk> {
         use TokenType::*;
 
         while self.check_index(self.current + 1, |next| is_alpha(next) || is_digital(next)) {

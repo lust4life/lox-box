@@ -77,7 +77,7 @@ impl<T> Vec<T> {
 pub type Value = f64;
 pub struct Chunk {
     code: Vec<u8>,
-    lines: Vec<i32>,
+    lines: Vec<usize>,
     contants: Vec<Value>,
 }
 
@@ -90,7 +90,7 @@ impl Chunk {
         }
     }
 
-    pub fn write_chunk(&mut self, byte: u8, line: i32) {
+    pub fn write_chunk(&mut self, byte: u8, line: usize) {
         self.code.push(byte);
         self.lines.push(line);
     }

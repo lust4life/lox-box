@@ -1,3 +1,4 @@
+#![feature(try_trait_v2, inline_const)]
 pub mod chunk;
 pub mod compiler;
 pub mod op;
