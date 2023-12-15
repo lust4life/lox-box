@@ -1,5 +1,5 @@
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum OpCode {
     OpReturn,
     OpConstant,
@@ -8,6 +8,13 @@ pub enum OpCode {
     OpMultiply,
     OpDivide,
     OpNegate,
+    OpNot,
+    OpLess,
+    OpGreater,
+    OpEqual,
+    OpTrue,
+    OpFalse,
+    OpNil,
 }
 
 impl Into<u8> for OpCode {

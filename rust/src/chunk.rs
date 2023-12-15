@@ -1,5 +1,11 @@
 use crate::op::OpCode;
-use std::{alloc, alloc::Layout, ops::Deref, ptr};
+use std::{
+    alloc,
+    alloc::Layout,
+    fmt::Display,
+    ops::{Deref, Neg},
+    ptr,
+};
 
 pub struct Vec<T> {
     ptr: *mut T,
@@ -74,7 +80,51 @@ impl<T> Vec<T> {
     }
 }
 
-pub type Value = f64;
+#[derive(Clone, PartialEq)]
+pub enum Value {
+    NIL,
+    BOOL(bool),
+    NUMBER(f64),
+}
+
+impl Value {
+    pub fn cast_truthy(&self) -> bool {
+        match self {
+            Value::NIL => false,
+            Value::BOOL(inner) => inner.to_owned(),
+            _ => true,
+        }
+    }
+}
+
+impl Neg for Value {
+    type Output = Result<Self, String>;
+
+    fn neg(self) -> Self::Output {
+        use Value::*;
+        return match self {
+            NUMBER(inner) => Ok(NUMBER(-inner)),
+            _ => Err("Operand must be a number.".to_owned()),
+        };
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.to_owned() {
+            Value::NIL => write!(f, "nil"),
+            Value::BOOL(inner) => {
+                if inner {
+                    write!(f, "true")
+                } else {
+                    write!(f, "false")
+                }
+            }
+            Value::NUMBER(inner) => write!(f, "{}", inner),
+        }
+    }
+}
+
 pub struct Chunk {
     code: Vec<u8>,
     lines: Vec<usize>,
@@ -104,8 +154,8 @@ impl Chunk {
         }
     }
 
-    pub fn get_one<T>(&self, offset: usize) -> &T {
-        let instruction = unsafe { &*(self.code.ptr.add(offset) as *const T) };
+    pub fn get_one<T: Copy>(&self, offset: usize) -> T {
+        let instruction = unsafe { *(self.code.ptr.add(offset) as *const T) };
         return instruction;
     }
 
@@ -128,6 +178,13 @@ impl Chunk {
             OpCode::OpMultiply => simple_instruction("OP_MULTIPLY"),
             OpCode::OpDivide => simple_instruction("OP_DIVIDE"),
             OpCode::OpNegate => simple_instruction("OP_NEGATE"),
+            OpCode::OpNot => simple_instruction("OP_NOT"),
+            OpCode::OpLess => simple_instruction("OP_LESS"),
+            OpCode::OpGreater => simple_instruction("OP_GREATER"),
+            OpCode::OpEqual => simple_instruction("OP_EQUAL"),
+            OpCode::OpTrue => simple_instruction("OP_TRUE"),
+            OpCode::OpFalse => simple_instruction("OP_FALSE"),
+            OpCode::OpNil => simple_instruction("OP_NIL"),
         };
 
         return offset + delta;
@@ -140,7 +197,7 @@ impl Chunk {
 
     fn constant_instruction(&self, name: &str, offset: usize) -> usize {
         let constant_idx = self.code[offset + 1];
-        let constant_value = self.contants[constant_idx as usize];
+        let constant_value = &self.contants[constant_idx as usize];
         println!("{name:-16} {constant_idx:4} '{constant_value:.2}'");
         return 2;
     }
@@ -150,25 +207,20 @@ impl Chunk {
         return self.contants.count - 1;
     }
 
-    pub fn get_constant(&self, offset: usize) -> Value {
+    pub fn get_constant(&self, offset: usize) -> &Value {
         let constant_idx = self.code[offset];
-        let constant_value = self.contants[constant_idx as usize];
+        let constant_value = &self.contants[constant_idx as usize];
         return constant_value;
+    }
+
+    pub fn get_line(&self, offset: usize) -> usize {
+        return self.lines[offset];
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use super::*;
-
     #[test]
-    fn poc() {
-        let mut chunk = Chunk::new();
-        let idx = chunk.add_constant(1.2);
-        chunk.write_chunk(OpCode::OpConstant as u8, 123);
-        chunk.write_chunk(idx as _, 123);
-        chunk.write_chunk(OpCode::OpReturn as u8, 123);
-        chunk.disassemble("test chunk");
-    }
+    fn poc() {}
 }

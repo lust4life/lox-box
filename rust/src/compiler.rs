@@ -1,6 +1,6 @@
 use crate::{
-    chunk::Chunk,
-    op::OpCode::{self, *},
+    chunk::{Chunk, Value},
+    op::OpCode::*,
     scanner::{
         Scanner, Token,
         TokenType::{self, *},
@@ -36,7 +36,7 @@ impl Precedence {
             PrecFactor => PrecUnary,
             PrecUnary => PrecCall,
             PrecCall => PrecPrimary,
-            PrecPrimary => todo!(),
+            PrecPrimary => panic!("unreachable"),
         }
     }
 }
@@ -72,8 +72,8 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             scanner,
             had_error: false,
             panic_mode: false,
-            current: TOKEN_PLACEHOLDER,
-            next: TOKEN_PLACEHOLDER,
+            current: TOKEN_PLACEHOLDER.to_owned(),
+            next: TOKEN_PLACEHOLDER.to_owned(),
             rules: rules,
         }
     }
@@ -95,8 +95,8 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         self.chunk.write_chunk(byte.into(), self.current.line);
     }
 
-    fn emit_bytes(&mut self, op_code: OpCode, byte2: u8) {
-        self.emit_byte(op_code);
+    fn emit_bytes<T1: Into<u8>, T2: Into<u8>>(&mut self, byte1: T1, byte2: T2) {
+        self.emit_byte(byte1);
         self.emit_byte(byte2);
     }
 
@@ -118,7 +118,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn consume(&mut self, match_type: TokenType, msg: &str) {
-        let tk = self.next;
+        let tk = self.next.to_owned();
         if tk.token_type == match_type {
             self.advance();
             return;
@@ -128,16 +128,17 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn advance(&mut self) {
-        self.current = self.next;
+        self.current = self.next.to_owned();
 
         loop {
-            let tk = self.scanner.scan_token();
+            let tk: Token<'_> = self.scanner.scan_token();
             if !tk.is_error_tk() {
                 self.next = tk;
                 break;
             }
 
-            self.error_at(tk, tk.lexeme);
+            let msg = tk.lexeme;
+            self.error_at(tk, msg);
         }
     }
 
@@ -146,14 +147,19 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn number(&mut self) {
-        let tk = self.current;
+        let tk = self.current.to_owned();
         let number = tk.lexeme.parse::<f64>().unwrap();
-        let idx = self.chunk.add_constant(number);
-        if idx > u8::MAX.into() {
-            self.error_at(tk, "Too many constants in one chunk.");
-        }
+        self.emit_constant(tk, Value::NUMBER(number));
+    }
 
-        self.emit_bytes(OpConstant, idx as _)
+    fn literal(&mut self) {
+        let tk = self.current.to_owned();
+        match tk.token_type {
+            TokenTrue => self.emit_byte(OpTrue),
+            TokenFalse => self.emit_byte(OpFalse),
+            TokenNil => self.emit_byte(OpNil),
+            _ => panic!("not support {:?}", tk.token_type),
+        }
     }
 
     fn grouping(&mut self) {
@@ -167,12 +173,13 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
         match operation_type {
             TokenMinus => self.emit_byte(OpNegate),
-            _ => todo!(),
+            TokenBang => self.emit_byte(OpNot),
+            _ => panic!("not support {:?}", operation_type),
         }
     }
 
     fn binary(&mut self) {
-        let tk = self.current;
+        let tk = self.current.to_owned();
         let rule = self.get_rule(tk.token_type);
 
         self.parse_precedence(rule.precedence.next());
@@ -182,6 +189,12 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             TokenPlus => self.emit_byte(OpAdd),
             TokenSlash => self.emit_byte(OpDivide),
             TokenStar => self.emit_byte(OpMultiply),
+            TokenEqualEqual => self.emit_byte(OpEqual),
+            TokenBangEqual => self.emit_bytes(OpEqual, OpNot),
+            TokenGreater => self.emit_byte(OpGreater),
+            TokenGreaterEqual => self.emit_bytes(OpLess, OpNot),
+            TokenLess => self.emit_byte(OpLess),
+            TokenLessEqual => self.emit_bytes(OpGreater, OpNot),
             _ => self.error_at(tk, "not support"),
         }
     }
@@ -204,7 +217,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 rule.infix.expect("should have infix")(self);
             }
         } else {
-            self.error_at(self.current, "Expect expression.");
+            self.error_at(self.current.to_owned(), "Expect expression.");
             return;
         }
     }
@@ -218,6 +231,14 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             .as_str(),
         );
         return rule;
+    }
+
+    fn emit_constant(&mut self, tk: Token, constant: Value) {
+        let idx = self.chunk.add_constant(constant);
+        if idx > u8::MAX.into() {
+            self.error_at(tk, "Too many constants in one chunk.");
+        }
+        self.emit_bytes(OpConstant, idx as u8)
     }
 }
 
@@ -246,29 +267,36 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
         (TokenSemicolon, None, None, PrecNone),
         (TokenSlash, None, Some(Parser::binary), PrecFactor),
         (TokenStar, None, Some(Parser::binary), PrecFactor),
-        (TokenBang, None, None, PrecNone),
-        (TokenBangEqual, None, None, PrecNone),
-        (TokenGreater, None, None, PrecNone),
-        (TokenGreaterEqual, None, None, PrecNone),
-        (TokenLess, None, None, PrecNone),
-        (TokenLessEqual, None, None, PrecNone),
+        (TokenBang, Some(Parser::unary), None, PrecUnary),
+        (TokenBangEqual, None, Some(Parser::binary), PrecEquality),
+        (TokenEqual, None, None, PrecNone),
+        (TokenEqualEqual, None, Some(Parser::binary), PrecEquality),
+        (TokenGreater, None, Some(Parser::binary), PrecComparison),
+        (
+            TokenGreaterEqual,
+            None,
+            Some(Parser::binary),
+            PrecComparison,
+        ),
+        (TokenLess, None, Some(Parser::binary), PrecComparison),
+        (TokenLessEqual, None, Some(Parser::binary), PrecComparison),
         (TokenIdentifier, None, None, PrecNone),
         (TokenString, None, None, PrecNone),
         (TokenNumber, Some(Parser::number), None, PrecNone),
         (TokenAnd, None, None, PrecNone),
         (TokenClass, None, None, PrecNone),
         (TokenElse, None, None, PrecNone),
-        (TokenFalse, None, None, PrecNone),
+        (TokenFalse, Some(Parser::literal), None, PrecNone),
         (TokenFor, None, None, PrecNone),
         (TokenFun, None, None, PrecNone),
         (TokenIf, None, None, PrecNone),
-        (TokenNil, None, None, PrecNone),
+        (TokenNil, Some(Parser::literal), None, PrecNone),
         (TokenOr, None, None, PrecNone),
         (TokenPrint, None, None, PrecNone),
         (TokenReturn, None, None, PrecNone),
         (TokenSuper, None, None, PrecNone),
         (TokenThis, None, None, PrecNone),
-        (TokenTrue, None, None, PrecNone),
+        (TokenTrue, Some(Parser::literal), None, PrecNone),
         (TokenVar, None, None, PrecNone),
         (TokenWhile, None, None, PrecNone),
         (TokenError, None, None, PrecNone),
@@ -294,7 +322,6 @@ pub fn compile(source: &str) -> Option<Chunk> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{compiler::compile, scanner::TokenType};
 
     #[test]
     fn tdd() {}
