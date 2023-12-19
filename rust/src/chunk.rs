@@ -1,10 +1,14 @@
-use crate::op::OpCode;
+use crate::{
+    object::{Obj, ObjType},
+    op::OpCode,
+};
 use std::{
     alloc,
     alloc::Layout,
     fmt::Display,
     ops::{Deref, Neg},
     ptr,
+    rc::Rc,
 };
 
 pub struct Vec<T> {
@@ -85,6 +89,7 @@ pub enum Value {
     NIL,
     BOOL(bool),
     NUMBER(f64),
+    OBJ(Rc<Obj>),
 }
 
 impl Value {
@@ -112,15 +117,18 @@ impl Neg for Value {
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.to_owned() {
-            Value::NIL => write!(f, "nil"),
+            Value::NIL => f.write_str("nil"),
             Value::BOOL(inner) => {
                 if inner {
-                    write!(f, "true")
+                    f.write_str("true")
                 } else {
-                    write!(f, "false")
+                    f.write_str("false")
                 }
             }
             Value::NUMBER(inner) => write!(f, "{}", inner),
+            Value::OBJ(obj) => match obj.ty {
+                ObjType::ObjString(ref str) => f.write_str(str),
+            },
         }
     }
 }
@@ -207,9 +215,9 @@ impl Chunk {
         return self.contants.count - 1;
     }
 
-    pub fn get_constant(&self, offset: usize) -> &Value {
+    pub fn get_constant(&self, offset: usize) -> Value {
         let constant_idx = self.code[offset];
-        let constant_value = &self.contants[constant_idx as usize];
+        let constant_value = self.contants[constant_idx as usize].clone();
         return constant_value;
     }
 

@@ -1,8 +1,9 @@
-use std::ops::FromResidual;
+use std::{ops::FromResidual, rc::Rc};
 
 use crate::{
     chunk::{Chunk, Value},
-    compiler,
+    compiler::{self},
+    object::{Obj, ObjType},
     op::OpCode::{self, *},
 };
 
@@ -22,26 +23,47 @@ impl FromResidual<Option<std::convert::Infallible>> for InterpretResult {
 
 const STACK_MAX: usize = 256;
 
+pub struct Heap {
+    objects: Option<Rc<Obj>>,
+}
+
+impl Heap {
+    fn new() -> Self {
+        Self { objects: None }
+    }
+
+    pub fn allocate_string(&mut self, content: &str) -> Value {
+        let root = std::mem::take(&mut self.objects);
+        let obj = Obj::new_string(content, root);
+        let rc_obj = Rc::new(obj);
+        self.objects = Some(Rc::clone(&rc_obj));
+        return Value::OBJ(rc_obj);
+    }
+}
+
 pub struct VM {
     chunk: Chunk,
     pc: usize,
     stack: [Value; STACK_MAX],
     stack_top_off_set: usize,
+    heap: Heap,
 }
 
 pub fn interpret(source: &str) -> InterpretResult {
-    let chunk = compiler::compile(source)?;
-    let mut vm = VM::new(chunk);
+    let mut heap = Heap::new();
+    let chunk = compiler::compile(source, &mut heap)?;
+    let mut vm = VM::new(chunk, heap);
     return vm.run();
 }
 
 impl VM {
-    pub fn new(chunk: Chunk) -> Self {
+    pub fn new(chunk: Chunk, heap: Heap) -> Self {
         return Self {
             chunk: chunk,
             pc: 0,
             stack: [const { Value::NIL }; STACK_MAX],
             stack_top_off_set: 0,
+            heap,
         };
     }
 
@@ -111,20 +133,29 @@ impl VM {
         use Value::*;
         let rhs = self.pop();
         let lhs = self.pop();
-        if let (NUMBER(lhs), NUMBER(rhs)) = (lhs, rhs) {
-            let res = match instruction {
-                OpAdd => NUMBER(lhs + rhs),
-                OpSubtract => NUMBER(lhs - rhs),
-                OpMultiply => NUMBER(lhs * rhs),
-                OpDivide => NUMBER(lhs / rhs),
-                OpGreater => BOOL(lhs > rhs),
-                OpLess => BOOL(lhs < rhs),
-                _ => panic!("not support {:?}", instruction),
-            };
 
-            return Ok(res);
-        } else {
-            return Err("Operands must be numbers.".to_owned());
+        match (lhs, rhs) {
+            (NUMBER(lhs), NUMBER(rhs)) => {
+                let res = match instruction {
+                    OpAdd => NUMBER(lhs + rhs),
+                    OpSubtract => NUMBER(lhs - rhs),
+                    OpMultiply => NUMBER(lhs * rhs),
+                    OpDivide => NUMBER(lhs / rhs),
+                    OpGreater => BOOL(lhs > rhs),
+                    OpLess => BOOL(lhs < rhs),
+                    _ => panic!("not support {:?}", instruction),
+                };
+
+                return Ok(res);
+            }
+            (OBJ(lhs), OBJ(rhs)) => match (&lhs.ty, &rhs.ty) {
+                (ObjType::ObjString(lhs), ObjType::ObjString(rhs)) => {
+                    let concated = lhs.clone() + rhs;
+                    let res = self.heap.allocate_string(concated.as_str());
+                    return Ok(res);
+                }
+            },
+            _ => return Err("Operands must be two numbers or two strings.".to_owned()),
         }
     }
 
@@ -134,7 +165,7 @@ impl VM {
         return one;
     }
 
-    fn read_constant(&mut self) -> &Value {
+    fn read_constant(&mut self) -> Value {
         let constant = self.chunk.get_constant(self.pc);
         self.pc += 1;
         return constant;
@@ -160,10 +191,11 @@ impl VM {
 
 #[cfg(test)]
 mod tests {
+
     use super::interpret;
 
     #[test]
     fn xxx() {
-        interpret("!(5 - 4 > 3 * 2 == !nil)");
+        interpret(r#" "123" + "-" +"456" == "123-456" "#);
     }
 }

@@ -6,6 +6,7 @@ use crate::{
         TokenType::{self, *},
         TOKEN_PLACEHOLDER,
     },
+    vm::Heap,
 };
 
 #[derive(PartialEq, PartialOrd)]
@@ -52,7 +53,6 @@ struct ParseRule<'code, 'tk> {
 }
 
 const RULE_LENGTH: usize = TokenEOF as usize + 1usize;
-
 struct Parser<'code: 'tk, 'tk> {
     chunk: Chunk,
     scanner: Scanner<'code>,
@@ -61,11 +61,12 @@ struct Parser<'code: 'tk, 'tk> {
     current: Token<'tk>,
     next: Token<'tk>,
     rules: [Option<ParseRule<'code, 'tk>>; RULE_LENGTH],
+    heap: &'code mut Heap,
 }
 
 impl<'code, 'tk> Parser<'code, 'tk> {
-    fn new(source: &'code str) -> Self {
-        let rules = init_rules();
+    pub fn new(source: &'code str, heap: &'code mut Heap) -> Self {
+        let rules: [Option<ParseRule<'_, '_>>; 40] = init_rules();
         let scanner = Scanner::new(source);
         Self {
             chunk: Chunk::new(),
@@ -75,6 +76,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             current: TOKEN_PLACEHOLDER.to_owned(),
             next: TOKEN_PLACEHOLDER.to_owned(),
             rules: rules,
+            heap: heap,
         }
     }
 
@@ -150,6 +152,14 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         let tk = self.current.to_owned();
         let number = tk.lexeme.parse::<f64>().unwrap();
         self.emit_constant(tk, Value::NUMBER(number));
+    }
+
+    fn string(&mut self) {
+        let tk = self.current.to_owned();
+        let constant = self
+            .heap
+            .allocate_string(&tk.lexeme[1..tk.lexeme.len() - 1]);
+        self.emit_constant(tk, constant);
     }
 
     fn literal(&mut self) {
@@ -281,7 +291,7 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
         (TokenLess, None, Some(Parser::binary), PrecComparison),
         (TokenLessEqual, None, Some(Parser::binary), PrecComparison),
         (TokenIdentifier, None, None, PrecNone),
-        (TokenString, None, None, PrecNone),
+        (TokenString, Some(Parser::string), None, PrecNone),
         (TokenNumber, Some(Parser::number), None, PrecNone),
         (TokenAnd, None, None, PrecNone),
         (TokenClass, None, None, PrecNone),
@@ -316,8 +326,8 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
     return rules;
 }
 
-pub fn compile(source: &str) -> Option<Chunk> {
-    return Parser::new(source).compile();
+pub fn compile(source: &str, heap: &mut Heap) -> Option<Chunk> {
+    return Parser::new(source, heap).compile();
 }
 
 #[cfg(test)]
