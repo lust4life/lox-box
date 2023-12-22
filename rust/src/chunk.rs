@@ -109,7 +109,7 @@ impl<T> Vec<T> {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Value {
     NIL,
     BOOL(bool),
@@ -253,29 +253,14 @@ impl Chunk {
 
 #[cfg(test)]
 mod tests {
-    use crate::chunk::Vec;
-    use crate::object::ObjString;
+
+    use crate::vm::Heap;
 
     #[test]
     fn poc() {
-        #[derive(Debug)]
-        struct A {
-            key: ObjString,
-            v: usize,
-        }
-
-        let mut v: Vec<A> = Vec::new();
-        v.push(A {
-            key: ObjString::new("hello"),
-            v: 123,
-        });
-
-        let v1 = &v[0];
-        dbg!(v1);
-        let v2 = v.read(1);
-        dbg!(&v2);
-        v2.v = 1;
-        dbg!(&v2);
-        dbg!(v.read(1));
+        let mut heap = Heap::new();
+        let a = heap.allocate_string("1");
+        let b = heap.allocate_string("1");
+        assert_eq!(a, b);
     }
 }

@@ -5,6 +5,7 @@ use crate::{
     compiler::{self},
     object::{Obj, ObjString, ObjType},
     op::OpCode::{self, *},
+    table::Table,
 };
 
 pub enum InterpretResult {
@@ -25,19 +26,34 @@ const STACK_MAX: usize = 256;
 
 pub struct Heap {
     objects: Option<Rc<Obj>>,
+    strings: Table,
 }
 
 impl Heap {
-    fn new() -> Self {
-        Self { objects: None }
+    pub fn new() -> Self {
+        Self {
+            objects: None,
+            strings: Table::new(),
+        }
     }
 
     pub fn allocate_string(&mut self, content: &str) -> Value {
+        let hash = ObjString::hash_string(content);
+        if let Some(str_v) = self.strings.find_key(content, hash) {
+            return Value::OBJ(str_v);
+        }
+
+        let obj_str = ObjString {
+            chars: content.to_string(),
+            hash,
+        };
         let root = std::mem::take(&mut self.objects);
-        let obj = Obj::new_string(content, root);
-        let rc_obj = Rc::new(obj);
+        let rc_obj = Rc::new(Obj::new_string(obj_str, root));
+        self.strings.set(Rc::clone(&rc_obj), Value::NIL);
+
         self.objects = Some(Rc::clone(&rc_obj));
-        return Value::OBJ(rc_obj);
+        let str_v = Value::OBJ(rc_obj);
+        return str_v;
     }
 }
 
