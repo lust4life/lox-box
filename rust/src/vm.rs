@@ -3,7 +3,7 @@ use std::{ops::FromResidual, rc::Rc};
 use crate::{
     chunk::{Chunk, Value},
     compiler::{self},
-    object::{Obj, ObjType},
+    object::{Obj, ObjString, ObjType},
     op::OpCode::{self, *},
 };
 
@@ -85,7 +85,7 @@ impl VM {
             let instruction = self.read_byte::<OpCode>();
             match instruction {
                 OpConstant => {
-                    let constant = self.read_constant().to_owned();
+                    let constant = self.read_constant();
                     self.push(constant);
                 }
                 OpNegate => {
@@ -150,7 +150,7 @@ impl VM {
             }
             (OBJ(lhs), OBJ(rhs)) => match (&lhs.ty, &rhs.ty) {
                 (ObjType::ObjString(lhs), ObjType::ObjString(rhs)) => {
-                    let concated = lhs.clone() + rhs;
+                    let concated = lhs.chars.clone() + &rhs.chars;
                     let res = self.heap.allocate_string(concated.as_str());
                     return Ok(res);
                 }
@@ -178,7 +178,7 @@ impl VM {
 
     fn pop(&mut self) -> Value {
         self.stack_top_off_set -= 1;
-        return self.stack[self.stack_top_off_set].to_owned();
+        return self.stack[self.stack_top_off_set].clone();
     }
 
     fn runtime_error(&self, msg: &str) -> InterpretResult {

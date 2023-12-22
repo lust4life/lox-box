@@ -73,8 +73,8 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             scanner,
             had_error: false,
             panic_mode: false,
-            current: TOKEN_PLACEHOLDER.to_owned(),
-            next: TOKEN_PLACEHOLDER.to_owned(),
+            current: TOKEN_PLACEHOLDER.clone(),
+            next: TOKEN_PLACEHOLDER.clone(),
             rules: rules,
             heap: heap,
         }
@@ -120,7 +120,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn consume(&mut self, match_type: TokenType, msg: &str) {
-        let tk = self.next.to_owned();
+        let tk = self.next.clone();
         if tk.token_type == match_type {
             self.advance();
             return;
@@ -130,7 +130,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn advance(&mut self) {
-        self.current = self.next.to_owned();
+        self.current = self.next.clone();
 
         loop {
             let tk: Token<'_> = self.scanner.scan_token();
@@ -149,13 +149,13 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn number(&mut self) {
-        let tk = self.current.to_owned();
+        let tk = self.current.clone();
         let number = tk.lexeme.parse::<f64>().unwrap();
         self.emit_constant(tk, Value::NUMBER(number));
     }
 
     fn string(&mut self) {
-        let tk = self.current.to_owned();
+        let tk = self.current.clone();
         let constant = self
             .heap
             .allocate_string(&tk.lexeme[1..tk.lexeme.len() - 1]);
@@ -163,7 +163,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn literal(&mut self) {
-        let tk = self.current.to_owned();
+        let tk = self.current.clone();
         match tk.token_type {
             TokenTrue => self.emit_byte(OpTrue),
             TokenFalse => self.emit_byte(OpFalse),
@@ -189,7 +189,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn binary(&mut self) {
-        let tk = self.current.to_owned();
+        let tk = self.current.clone();
         let rule = self.get_rule(tk.token_type);
 
         self.parse_precedence(rule.precedence.next());
@@ -227,7 +227,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 rule.infix.expect("should have infix")(self);
             }
         } else {
-            self.error_at(self.current.to_owned(), "Expect expression.");
+            self.error_at(self.current.clone(), "Expect expression.");
             return;
         }
     }

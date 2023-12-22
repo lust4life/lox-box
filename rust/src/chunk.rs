@@ -13,8 +13,8 @@ use std::{
 
 pub struct Vec<T> {
     ptr: *mut T,
-    count: usize,
-    capacity: usize,
+    pub count: usize,
+    pub capacity: usize,
 }
 
 impl<T> Drop for Vec<T> {
@@ -34,7 +34,7 @@ impl<T> Deref for Vec<T> {
 }
 
 impl<T> Vec<T> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let ptr = ptr::NonNull::dangling().as_ptr();
         return Self {
             ptr: ptr,
@@ -43,18 +43,32 @@ impl<T> Vec<T> {
         };
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        let new_layout = Layout::array::<T>(capacity).unwrap();
+        let new_ptr = unsafe { alloc::alloc(new_layout) };
+        if new_ptr.is_null() {
+            alloc::handle_alloc_error(new_layout)
+        } else {
+            return Self {
+                ptr: new_ptr.cast(),
+                count: 0,
+                capacity: capacity,
+            };
+        }
+    }
+
     fn push(&mut self, item: T) {
         if self.capacity <= self.count {
             self.grow_array();
         }
         unsafe {
             let end = self.ptr.add(self.count);
-            ptr::write(end, item);
+            end.write(item);
         }
         self.count += 1;
     }
 
-    fn grow_capacity(&self) -> usize {
+    pub fn grow_capacity(&self) -> usize {
         if self.capacity < 8 {
             return 8;
         } else {
@@ -62,7 +76,7 @@ impl<T> Vec<T> {
         };
     }
 
-    fn grow_array(&mut self) {
+    pub fn grow_array(&mut self) {
         let old_capacity = self.capacity;
         let new_capacity = self.grow_capacity();
         let new_layout = Layout::array::<T>(new_capacity).unwrap();
@@ -80,6 +94,17 @@ impl<T> Vec<T> {
         } else {
             self.ptr = new_ptr.cast();
             self.capacity = new_capacity;
+        }
+    }
+
+    pub fn read(&self, idx: usize) -> &mut T {
+        unsafe { &mut *self.ptr.add(idx) }
+    }
+
+    pub fn write(&mut self, idx: usize, val: T, add_count: bool) {
+        unsafe { self.ptr.add(idx).write(val) };
+        if add_count {
+            self.count += 1;
         }
     }
 }
@@ -127,7 +152,7 @@ impl Display for Value {
             }
             Value::NUMBER(inner) => write!(f, "{}", inner),
             Value::OBJ(obj) => match obj.ty {
-                ObjType::ObjString(ref str) => f.write_str(str),
+                ObjType::ObjString(ref inner) => f.write_str(&inner.chars),
             },
         }
     }
@@ -228,7 +253,29 @@ impl Chunk {
 
 #[cfg(test)]
 mod tests {
+    use crate::chunk::Vec;
+    use crate::object::ObjString;
 
     #[test]
-    fn poc() {}
+    fn poc() {
+        #[derive(Debug)]
+        struct A {
+            key: ObjString,
+            v: usize,
+        }
+
+        let mut v: Vec<A> = Vec::new();
+        v.push(A {
+            key: ObjString::new("hello"),
+            v: 123,
+        });
+
+        let v1 = &v[0];
+        dbg!(v1);
+        let v2 = v.read(1);
+        dbg!(&v2);
+        v2.v = 1;
+        dbg!(&v2);
+        dbg!(v.read(1));
+    }
 }
