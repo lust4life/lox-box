@@ -9,7 +9,7 @@ use crate::{
     vm::Heap,
 };
 
-#[derive(PartialEq, PartialOrd)]
+#[derive(PartialEq, PartialOrd, Clone, Copy)]
 enum Precedence {
     PrecNone,
     PrecAssignment, // =
@@ -62,6 +62,7 @@ struct Parser<'code: 'tk, 'tk> {
     next: Token<'tk>,
     rules: [Option<ParseRule<'code, 'tk>>; RULE_LENGTH],
     heap: &'code mut Heap,
+    current_precedence: Precedence,
 }
 
 impl<'code, 'tk> Parser<'code, 'tk> {
@@ -77,6 +78,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             next: TOKEN_PLACEHOLDER.clone(),
             rules: rules,
             heap: heap,
+            current_precedence: PrecNone,
         }
     }
 
@@ -225,7 +227,10 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     /// 就是构造它们自身。操作数或者操作符的 prefix 处理完以后，会继续看接下来更高优先级的操作符，
     /// 如果有，意味着它要继续处理这个操作数，所以它一定会是一个 infix（定义上决定的），所以就不需要判断空了。
     fn parse_precedence(&mut self, precedence: Precedence) {
+        let previous = self.current_precedence;
+        self.current_precedence = precedence;
         self.advance();
+
         let rule: &ParseRule<'_, '_> = self.get_rule(self.current.token_type);
         if let Some(prefix) = rule.prefix {
             prefix(self);
@@ -235,10 +240,15 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 let rule = self.get_rule(self.current.token_type);
                 rule.infix.expect("should have infix")(self);
             }
+
+            if self.can_assign() && self.match_and_advance(&[TokenEqual]) {
+                self.error_at(&self.current.clone(), "Invalid assignment target.");
+            }
         } else {
             self.error_at(&self.current.clone(), "Expect expression.");
-            return;
         }
+
+        self.current_precedence = previous;
     }
 
     fn get_rule(&self, token_type: TokenType) -> &ParseRule<'code, 'tk> {
@@ -269,6 +279,10 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     fn declaration(&mut self) {
         if !self.var_declar() {
             self.statement();
+        }
+
+        if self.panic_mode {
+            self.synchronize();
         }
     }
 
@@ -337,12 +351,29 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     fn variable(&mut self) {
         let idx = self.identifier_constant(&self.current.clone());
 
-        if self.match_and_advance(&[TokenEqual]) {
+        if self.can_assign() && self.match_and_advance(&[TokenEqual]) {
             self.expression();
             self.emit_bytes(OpSetGlobal, idx);
         } else {
             self.emit_bytes(OpGetGlobal, idx);
         }
+    }
+
+    fn synchronize(&mut self) {
+        loop {
+            let tk = self.current.clone();
+            if tk.token_type != TokenEOF && tk.token_type != TokenSemicolon {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.panic_mode = false;
+    }
+
+    fn can_assign(&self) -> bool {
+        self.current_precedence <= PrecAssignment
     }
 }
 
