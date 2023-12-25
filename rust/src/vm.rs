@@ -66,7 +66,7 @@ impl Heap {
         };
         let root = std::mem::take(&mut self.objects);
         let rc_obj = Rc::new(Obj::new_string(obj_str, root));
-        self.strings.set(Rc::clone(&rc_obj), Value::NIL);
+        self.strings.set(Rc::clone(&rc_obj), Value::NIL, false);
 
         self.objects = Some(Rc::clone(&rc_obj));
         let str_v = Value::OBJ(rc_obj);
@@ -80,6 +80,7 @@ pub struct VM {
     stack: [Value; STACK_MAX],
     stack_top_off_set: usize,
     heap: Heap,
+    globals: Table,
 }
 
 pub fn interpret(source: &str) -> InterpretResult {
@@ -97,6 +98,7 @@ impl VM {
             stack: [const { Value::NIL }; STACK_MAX],
             stack_top_off_set: 0,
             heap,
+            globals: Table::new(),
         };
     }
 
@@ -163,6 +165,38 @@ impl VM {
                 OpPop => {
                     self.pop();
                 }
+                OpDefineGlobal => {
+                    let key = self.read_string();
+                    // consider gc pause case here, peek first then pop after global set
+                    let value = self.peek();
+                    self.globals.set(key, value, false);
+                    self.pop();
+                }
+                OpGetGlobal => {
+                    let key = self.read_string();
+                    match self.globals.get(&key) {
+                        Some(value) => {
+                            self.push(value.clone());
+                        }
+                        None => {
+                            return self.runtime_error(
+                                format!("Undefined variable '{}'.", key.ty.cast_string().chars)
+                                    .as_str(),
+                            );
+                        }
+                    }
+                }
+                OpSetGlobal => {
+                    let key = self.read_string();
+                    let value = self.peek();
+                    let exist = self.globals.set(key.clone(), value, true);
+                    if !exist {
+                        return self.runtime_error(
+                            format!("Undefined variable '{}'.", key.ty.cast_string().chars)
+                                .as_str(),
+                        );
+                    }
+                }
             }
         }
     }
@@ -212,6 +246,13 @@ impl VM {
         return constant;
     }
 
+    fn read_string(&mut self) -> Rc<Obj> {
+        match self.read_constant() {
+            Value::OBJ(obj) => return obj,
+            other => panic!("should be a obj string, but found {}", other),
+        }
+    }
+
     fn push(&mut self, value: Value) {
         self.stack[self.stack_top_off_set] = value;
         self.stack_top_off_set += 1;
@@ -220,6 +261,10 @@ impl VM {
     fn pop(&mut self) -> Value {
         self.stack_top_off_set -= 1;
         return self.stack[self.stack_top_off_set].clone();
+    }
+
+    fn peek(&mut self) -> Value {
+        return self.stack[self.stack_top_off_set - 1].clone();
     }
 
     fn runtime_error(&self, msg: &str) -> InterpretResult {
@@ -239,11 +284,14 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            print "(" + "" + ")";   // expect: ()
-            print "a string"; // expect: a string
+            var a = "before";
+            print a; // expect: before
             
-            // Non-ASCII.
-            print "A~¶Þॐஃ"; // expect: A~¶Þॐஃ
+            a = "after";
+            print a; // expect: after
+            
+            print a = "arg"; // expect: arg
+            print a; // expect: arg
         "#,
         );
     }

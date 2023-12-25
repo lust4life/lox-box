@@ -111,7 +111,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         self.emit_byte(byte2);
     }
 
-    fn error_at(&mut self, tk: Token, msg: &str) {
+    fn error_at(&mut self, tk: &Token, msg: &str) {
         if self.panic_mode {
             return;
         }
@@ -135,7 +135,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             return;
         }
 
-        self.error_at(tk, msg);
+        self.error_at(&tk, msg);
     }
 
     fn advance(&mut self) {
@@ -149,7 +149,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             }
 
             let msg = tk.lexeme;
-            self.error_at(tk, msg);
+            self.error_at(&tk, msg);
         }
     }
 
@@ -160,7 +160,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     fn number(&mut self) {
         let tk = self.current.clone();
         let number = tk.lexeme.parse::<f64>().unwrap();
-        self.emit_constant(tk, Value::NUMBER(number));
+        self.emit_constant(&tk, Value::NUMBER(number));
     }
 
     fn string(&mut self) {
@@ -168,7 +168,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         let constant = self
             .heap
             .allocate_string(&tk.lexeme[1..tk.lexeme.len() - 1]);
-        self.emit_constant(tk, constant);
+        self.emit_constant(&tk, constant);
     }
 
     fn literal(&mut self) {
@@ -214,7 +214,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             TokenGreaterEqual => self.emit_bytes(OpLess, OpNot),
             TokenLess => self.emit_byte(OpLess),
             TokenLessEqual => self.emit_bytes(OpGreater, OpNot),
-            _ => self.error_at(tk, "not support"),
+            _ => self.error_at(&tk, "not support"),
         }
     }
 
@@ -236,7 +236,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 rule.infix.expect("should have infix")(self);
             }
         } else {
-            self.error_at(self.current.clone(), "Expect expression.");
+            self.error_at(&self.current.clone(), "Expect expression.");
             return;
         }
     }
@@ -252,15 +252,27 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         return rule;
     }
 
-    fn emit_constant(&mut self, tk: Token, constant: Value) {
+    fn emit_constant(&mut self, tk: &Token, constant: Value) {
+        let idx = self.make_constant(constant, tk);
+        self.emit_bytes(OpConstant, idx)
+    }
+
+    fn make_constant(&mut self, constant: Value, tk: &Token<'_>) -> u8 {
         let idx = self.chunk.add_constant(constant);
         if idx > u8::MAX.into() {
             self.error_at(tk, "Too many constants in one chunk.");
+            return 0;
         }
-        self.emit_bytes(OpConstant, idx as u8)
+        return idx as _;
     }
 
     fn declaration(&mut self) {
+        if !self.var_declar() {
+            self.statement();
+        }
+    }
+
+    fn statement(&mut self) {
         if !self.print_stmt() {
             self.expression_stmt();
         }
@@ -290,6 +302,47 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         self.expression();
         self.consume(TokenSemicolon, "Expect ';' after value.");
         self.emit_byte(OpPop);
+    }
+
+    fn var_declar(&mut self) -> bool {
+        let matched = self.match_and_advance(&[TokenVar]);
+        if matched {
+            let idx = self.parse_variable("Expect variable name.");
+            if self.match_and_advance(&[TokenEqual]) {
+                self.expression();
+            } else {
+                self.emit_byte(OpNil);
+            }
+
+            self.consume(TokenSemicolon, "Expect ';' after value.");
+
+            self.emit_bytes(OpDefineGlobal, idx);
+        }
+
+        return matched;
+    }
+
+    fn parse_variable(&mut self, msg: &str) -> u8 {
+        self.consume(TokenIdentifier, msg);
+        let idx = self.identifier_constant(&self.current.clone());
+        return idx;
+    }
+
+    fn identifier_constant(&mut self, tk: &Token) -> u8 {
+        let constant = self.heap.allocate_string(tk.lexeme);
+        let idx = self.make_constant(constant, tk);
+        idx
+    }
+
+    fn variable(&mut self) {
+        let idx = self.identifier_constant(&self.current.clone());
+
+        if self.match_and_advance(&[TokenEqual]) {
+            self.expression();
+            self.emit_bytes(OpSetGlobal, idx);
+        } else {
+            self.emit_bytes(OpGetGlobal, idx);
+        }
     }
 }
 
@@ -331,7 +384,7 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
         ),
         (TokenLess, None, Some(Parser::binary), PrecComparison),
         (TokenLessEqual, None, Some(Parser::binary), PrecComparison),
-        (TokenIdentifier, None, None, PrecNone),
+        (TokenIdentifier, Some(Parser::variable), None, PrecNone),
         (TokenString, Some(Parser::string), None, PrecNone),
         (TokenNumber, Some(Parser::number), None, PrecNone),
         (TokenAnd, None, None, PrecNone),

@@ -220,6 +220,9 @@ impl Chunk {
             OpCode::OpNil => simple_instruction("OP_NIL"),
             OpCode::OpPrint => simple_instruction("OP_PRINT"),
             OpCode::OpPop => simple_instruction("OP_POP"),
+            OpCode::OpDefineGlobal => simple_instruction("OP_DEFINE_GLOBAL"),
+            OpCode::OpGetGlobal => simple_instruction("OP_GET_GLOBAL"),
+            OpCode::OpSetGlobal => simple_instruction("OP_SET_GLOBAL"),
         };
 
         return offset + delta;

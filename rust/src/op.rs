@@ -17,10 +17,9 @@ pub enum OpCode {
     OpNil,
     OpPrint,
     OpPop,
-    // OpNil,
-    // OpDefineGlobal,
-    // OpGetGlobal,
-    // OpSetGlobal,
+    OpDefineGlobal,
+    OpGetGlobal,
+    OpSetGlobal,
 }
 
 impl Into<u8> for OpCode {
