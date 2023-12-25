@@ -239,7 +239,11 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            // print "A~¶Þॐஃ"; // expect: A~¶Þॐஃ
+            print "(" + "" + ")";   // expect: ()
+            print "a string"; // expect: a string
+            
+            // Non-ASCII.
+            print "A~¶Þॐஃ"; // expect: A~¶Þॐஃ
         "#,
         );
     }
