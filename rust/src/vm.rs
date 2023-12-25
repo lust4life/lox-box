@@ -1,4 +1,4 @@
-use std::{ops::FromResidual, rc::Rc};
+use std::{ops::FromResidual, process::ExitCode, rc::Rc};
 
 use crate::{
     chunk::{Chunk, Value},
@@ -19,6 +19,23 @@ use InterpretResult::*;
 impl FromResidual<Option<std::convert::Infallible>> for InterpretResult {
     fn from_residual(_: Option<std::convert::Infallible>) -> Self {
         return InterpretCompileError;
+    }
+}
+
+impl FromResidual<std::io::Result<std::convert::Infallible>> for InterpretResult {
+    fn from_residual(residual: std::io::Result<std::convert::Infallible>) -> Self {
+        eprintln!("{}", residual.unwrap_err());
+        std::process::exit(74);
+    }
+}
+
+impl std::process::Termination for InterpretResult {
+    fn report(self) -> std::process::ExitCode {
+        match self {
+            InterpretOk => ExitCode::SUCCESS,
+            InterpretCompileError => ExitCode::from(65),
+            InterpretRuntimeError => ExitCode::from(70),
+        }
     }
 }
 
@@ -125,7 +142,6 @@ impl VM {
                     self.push(Value::BOOL(lhs == rhs));
                 }
                 OpReturn => {
-                    println!("{}", self.pop());
                     return InterpretResult::InterpretOk;
                 }
                 OpNot => {
@@ -140,6 +156,12 @@ impl VM {
                 }
                 OpNil => {
                     self.push(Value::NIL);
+                }
+                OpPrint => {
+                    println!("{}", self.pop());
+                }
+                OpPop => {
+                    self.pop();
                 }
             }
         }
@@ -171,7 +193,10 @@ impl VM {
                     return Ok(res);
                 }
             },
-            _ => return Err("Operands must be two numbers or two strings.".to_owned()),
+            _ => match instruction {
+                OpAdd => return Err("Operands must be two numbers or two strings.".to_owned()),
+                _ => return Err("Operands must be numbers.".to_owned()),
+            },
         }
     }
 
@@ -212,6 +237,10 @@ mod tests {
 
     #[test]
     fn xxx() {
-        interpret(r#" "123" + "-" +"456" == "123-456" "#);
+        interpret(
+            r#"
+            // print "A~¶Þॐஃ"; // expect: A~¶Þॐஃ
+        "#,
+        );
     }
 }

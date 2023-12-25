@@ -200,9 +200,7 @@ impl<'code: 'tk, 'tk> Scanner<'code> {
 
     fn handle_string(&mut self) -> Token<'tk> {
         if self.advance_till("\"") {
-            let tk = self.token(TokenType::TokenString);
-            self.advance();
-            return tk;
+            return self.token(TokenType::TokenString);
         } else {
             return self.error_token("Unterminated string.");
         }

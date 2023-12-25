@@ -1,34 +1,29 @@
 use std::{env, fs, io::Write, process::exit};
 
-use lox_box::vm;
+use lox_box::vm::{self, InterpretResult};
 
-fn main() -> std::io::Result<()> {
+fn main() -> InterpretResult {
     let args = env::args().collect::<Vec<String>>();
     match args.len() {
         1 => {
-            repl()?;
+            return repl();
         }
         2 => {
-            run_file(&args[1])?;
+            return run_file(&args[1]);
         }
         _ => {
             println!("Usage: clox [path]");
             exit(64);
         }
-    };
-
-    return Ok(());
+    }
 }
 
-fn run_file(path: &str) -> std::io::Result<()> {
+fn run_file(path: &str) -> InterpretResult {
     let source = fs::read_to_string(path)?;
-
-    vm::interpret(&source);
-
-    return Ok(());
+    return vm::interpret(&source);
 }
 
-fn repl() -> std::io::Result<()> {
+fn repl() -> InterpretResult {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
 
@@ -45,5 +40,5 @@ fn repl() -> std::io::Result<()> {
         vm::interpret(&line);
     }
 
-    return Ok(());
+    return InterpretResult::InterpretOk;
 }

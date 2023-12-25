@@ -82,7 +82,16 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
     fn compile(mut self) -> Option<Chunk> {
         self.advance();
-        self.expression();
+
+        loop {
+            let next_tk = self.next.clone();
+            if next_tk.token_type == TokenEOF {
+                break;
+            }
+
+            self.declaration();
+        }
+
         self.consume(TokenEOF, "Expect end of expression.");
 
         if self.had_error {
@@ -249,6 +258,38 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             self.error_at(tk, "Too many constants in one chunk.");
         }
         self.emit_bytes(OpConstant, idx as u8)
+    }
+
+    fn declaration(&mut self) {
+        if !self.print_stmt() {
+            self.expression_stmt();
+        }
+    }
+
+    fn print_stmt(&mut self) -> bool {
+        if self.match_and_advance(&[TokenPrint]) {
+            self.expression();
+            self.consume(TokenSemicolon, "Expect ';' after value.");
+            self.emit_byte(OpPrint);
+            return true;
+        }
+        return false;
+    }
+
+    fn match_and_advance(&mut self, types: &[TokenType]) -> bool {
+        for tk_type in types {
+            if tk_type == &self.next.token_type {
+                self.advance();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    fn expression_stmt(&mut self) {
+        self.expression();
+        self.consume(TokenSemicolon, "Expect ';' after value.");
+        self.emit_byte(OpPop);
     }
 }
 

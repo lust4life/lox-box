@@ -30,6 +30,9 @@ impl Table {
 
     fn with_capacity(capacity: usize) -> Self {
         let mut entries = Vec::with_capacity(capacity);
+
+        // initialize with an empty None value,
+        // cause we need this to see if a slot has been set already
         for i in 0..capacity {
             entries.write(i, None, false)
         }

@@ -218,6 +218,8 @@ impl Chunk {
             OpCode::OpTrue => simple_instruction("OP_TRUE"),
             OpCode::OpFalse => simple_instruction("OP_FALSE"),
             OpCode::OpNil => simple_instruction("OP_NIL"),
+            OpCode::OpPrint => simple_instruction("OP_PRINT"),
+            OpCode::OpPop => simple_instruction("OP_POP"),
         };
 
         return offset + delta;
