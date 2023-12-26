@@ -48,9 +48,9 @@ const LOCAL_STACK_MAX_COUNT: usize = u8::MAX as usize + 1;
 struct Compiler<'tk> {
     locals: [Option<Local<'tk>>; LOCAL_STACK_MAX_COUNT],
     current_scope: i8,
-    local_count: u8,
+    local_count: usize,
 }
-impl<'a> Compiler<'a> {
+impl<'tk> Compiler<'tk> {
     fn new() -> Self {
         Self {
             locals: [const { None }; LOCAL_STACK_MAX_COUNT],
@@ -58,7 +58,81 @@ impl<'a> Compiler<'a> {
             local_count: 0,
         }
     }
+
+    fn within_scope(&self) -> bool {
+        self.current_scope > 0
+    }
+
+    fn mark_local_initialized(&mut self) {
+        self.locals[self.local_count - 1].as_mut().unwrap().scope = self.current_scope;
+    }
+
+    fn resolve_local(&mut self, tk: &Token) -> Result<Option<u8>, String> {
+        for idx in (0..self.local_count).rev() {
+            let local = self.locals[idx].as_ref().unwrap();
+            if local.name == tk.lexeme {
+                if local.scope == -1 {
+                    return Err("Can't read local variable in its own initializer.".to_string());
+                }
+                return Ok(Some(idx as _));
+            }
+        }
+
+        return Ok(None);
+    }
+
+    fn declare_local(&mut self, tk: &Token<'tk>) -> Result<(), String> {
+        if self.local_count == LOCAL_STACK_MAX_COUNT {
+            return Err("Too many local variables in function.".to_string());
+        }
+
+        for local in self.locals[0..self.local_count]
+            .iter()
+            .rev()
+            .map(|x| x.as_ref().unwrap())
+        {
+            if local.scope < self.current_scope {
+                break;
+            }
+
+            let existed = local.scope == self.current_scope && local.name == tk.lexeme;
+            if existed {
+                return Err("Already a variable with this name in this scope.".to_string());
+            }
+        }
+
+        self.add_local(tk.lexeme);
+
+        return Ok(());
+    }
+
+    fn add_local(&mut self, name: &'tk str) {
+        self.locals[self.local_count] = Some(Local {
+            name: name,
+            scope: -1,
+        });
+        self.local_count += 1;
+    }
+
+    fn end_scope(&mut self) -> usize {
+        let before = self.local_count;
+        for local in self.locals[0..self.local_count]
+            .iter()
+            .rev()
+            .map(|x| x.as_ref().unwrap())
+        {
+            if local.scope >= self.current_scope {
+                self.local_count -= 1;
+            } else {
+                break;
+            }
+        }
+
+        self.current_scope -= 1;
+        return before - self.local_count;
+    }
 }
+
 struct Local<'tk> {
     name: &'tk str,
     scope: i8,
@@ -382,8 +456,10 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         self.consume(TokenIdentifier, msg);
         let tk = &self.current.clone();
 
-        if self.compiler.current_scope > 0 {
-            self.declare_local(tk);
+        if self.compiler.within_scope() {
+            self.compiler
+                .declare_local(tk)
+                .unwrap_or_else(|ref msg| self.error_at(tk, msg));
             return None;
         } else {
             let idx = self.identifier_constant(tk);
@@ -400,14 +476,22 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     fn variable(&mut self) {
         let (idx, get_op, set_op);
         let tk = &self.current.clone();
-        if let Some(local_idx) = self.resolve_local(tk) {
-            idx = local_idx;
-            get_op = OpGetLocal;
-            set_op = OpSetLocal;
-        } else {
-            idx = self.identifier_constant(tk);
-            get_op = OpGetGlobal;
-            set_op = OpSetGlobal;
+
+        match self.compiler.resolve_local(tk) {
+            Ok(Some(local_idx)) => {
+                idx = local_idx;
+                get_op = OpGetLocal;
+                set_op = OpSetLocal;
+            }
+            Ok(None) => {
+                idx = self.identifier_constant(tk);
+                get_op = OpGetGlobal;
+                set_op = OpSetGlobal;
+            }
+            Err(ref msg) => {
+                self.error_at(tk, msg);
+                return;
+            }
         }
 
         if self.can_assign() && self.match_and_advance(&[TokenEqual]) {
@@ -416,24 +500,6 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         } else {
             self.emit_bytes(get_op, idx);
         }
-    }
-
-    fn resolve_local(&mut self, tk: &Token) -> Option<u8> {
-        let local_count = self.compiler.local_count;
-        for idx in (0..local_count).rev() {
-            if let Some(local) = self.compiler.locals[idx as usize]
-                .as_ref()
-                .filter(|x| x.name == tk.lexeme)
-            {
-                if local.scope == -1 {
-                    self.error_at(tk, "Can't read local variable in its own initializer.")
-                }
-
-                return Some(idx);
-            }
-        }
-
-        return None;
     }
 
     fn synchronize(&mut self) {
@@ -458,62 +524,18 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn end_scope(&mut self) {
-        let scope_to_be_free = self.compiler.current_scope;
-
-        let local_count = self.compiler.local_count;
-        for idx in (0..local_count).rev() {
-            let need_free = self.compiler.locals[idx as usize]
-                .as_ref()
-                .is_some_and(|x| x.scope >= scope_to_be_free);
-
-            if need_free {
-                self.compiler.local_count -= 1;
-                self.emit_byte(OpPop);
-            } else {
-                break;
-            }
+        let pop_count = self.compiler.end_scope();
+        for _ in 0..pop_count {
+            self.emit_byte(OpPop);
         }
-
-        self.compiler.current_scope -= 1;
     }
 
     fn define_variable(&mut self, global_idx: Option<u8>) {
         if let Some(global_idx) = global_idx {
             self.emit_bytes(OpDefineGlobal, global_idx);
         } else {
-            self.compiler.locals[self.compiler.local_count as usize - 1]
-                .as_mut()
-                .unwrap()
-                .scope = self.compiler.current_scope;
+            self.compiler.mark_local_initialized();
         }
-    }
-
-    fn declare_local(&mut self, tk: &Token<'tk>) {
-        let idx = self.compiler.local_count as usize;
-        if idx == LOCAL_STACK_MAX_COUNT {
-            self.error_at(tk, "Too many local variables in function.");
-            return;
-        }
-
-        let current_scope = self.compiler.current_scope;
-        for idx in (0..self.compiler.local_count).rev() {
-            let local = self.compiler.locals[idx as usize].as_ref().unwrap();
-            if local.scope < current_scope {
-                break;
-            }
-
-            let existed = local.scope == current_scope && local.name == tk.lexeme;
-            if existed {
-                self.error_at(tk, "Already a variable with this name in this scope.");
-                return;
-            }
-        }
-
-        self.compiler.locals[idx] = Some(Local {
-            name: tk.lexeme,
-            scope: -1,
-        });
-        self.compiler.local_count += 1;
     }
 }
 
