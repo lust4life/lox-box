@@ -44,6 +44,26 @@ impl Precedence {
 
 use Precedence::*;
 
+const LOCAL_STACK_MAX_COUNT: usize = u8::MAX as usize + 1;
+struct Compiler<'tk> {
+    locals: [Option<Local<'tk>>; LOCAL_STACK_MAX_COUNT],
+    current_scope: i8,
+    local_count: u8,
+}
+impl<'a> Compiler<'a> {
+    fn new() -> Self {
+        Self {
+            locals: [const { None }; LOCAL_STACK_MAX_COUNT],
+            current_scope: 0,
+            local_count: 0,
+        }
+    }
+}
+struct Local<'tk> {
+    name: &'tk str,
+    scope: i8,
+}
+
 type ParseFun<'code, 'tk> = fn(&mut Parser<'code, 'tk>);
 
 struct ParseRule<'code, 'tk> {
@@ -63,6 +83,7 @@ struct Parser<'code: 'tk, 'tk> {
     rules: [Option<ParseRule<'code, 'tk>>; RULE_LENGTH],
     heap: &'code mut Heap,
     current_precedence: Precedence,
+    compiler: Compiler<'tk>,
 }
 
 impl<'code, 'tk> Parser<'code, 'tk> {
@@ -79,6 +100,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             rules: rules,
             heap: heap,
             current_precedence: PrecNone,
+            compiler: Compiler::new(),
         }
     }
 
@@ -287,7 +309,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn statement(&mut self) {
-        if !self.print_stmt() {
+        if !self.print_stmt() && !self.block_stmt() {
             self.expression_stmt();
         }
     }
@@ -297,6 +319,26 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             self.expression();
             self.consume(TokenSemicolon, "Expect ';' after value.");
             self.emit_byte(OpPrint);
+            return true;
+        }
+        return false;
+    }
+
+    fn block_stmt(&mut self) -> bool {
+        if self.match_and_advance(&[TokenLeftBrace]) {
+            self.begin_scope();
+
+            loop {
+                let token_type = self.next.token_type;
+                if !(token_type != TokenEOF && token_type != TokenRightBrace) {
+                    break;
+                }
+                self.declaration();
+            }
+
+            self.consume(TokenRightBrace, "Expect '}' after block.");
+
+            self.end_scope();
             return true;
         }
         return false;
@@ -330,16 +372,23 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
             self.consume(TokenSemicolon, "Expect ';' after value.");
 
-            self.emit_bytes(OpDefineGlobal, idx);
+            self.define_variable(idx);
         }
 
         return matched;
     }
 
-    fn parse_variable(&mut self, msg: &str) -> u8 {
+    fn parse_variable(&mut self, msg: &str) -> Option<u8> {
         self.consume(TokenIdentifier, msg);
-        let idx = self.identifier_constant(&self.current.clone());
-        return idx;
+        let tk = &self.current.clone();
+
+        if self.compiler.current_scope > 0 {
+            self.declare_local(tk);
+            return None;
+        } else {
+            let idx = self.identifier_constant(tk);
+            return Some(idx);
+        }
     }
 
     fn identifier_constant(&mut self, tk: &Token) -> u8 {
@@ -349,20 +398,48 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn variable(&mut self) {
-        let idx = self.identifier_constant(&self.current.clone());
+        let (idx, get_op, set_op);
+        let tk = &self.current.clone();
+        if let Some(local_idx) = self.resolve_local(tk) {
+            idx = local_idx;
+            get_op = OpGetLocal;
+            set_op = OpSetLocal;
+        } else {
+            idx = self.identifier_constant(tk);
+            get_op = OpGetGlobal;
+            set_op = OpSetGlobal;
+        }
 
         if self.can_assign() && self.match_and_advance(&[TokenEqual]) {
             self.expression();
-            self.emit_bytes(OpSetGlobal, idx);
+            self.emit_bytes(set_op, idx);
         } else {
-            self.emit_bytes(OpGetGlobal, idx);
+            self.emit_bytes(get_op, idx);
         }
+    }
+
+    fn resolve_local(&mut self, tk: &Token) -> Option<u8> {
+        let local_count = self.compiler.local_count;
+        for idx in (0..local_count).rev() {
+            if let Some(local) = self.compiler.locals[idx as usize]
+                .as_ref()
+                .filter(|x| x.name == tk.lexeme)
+            {
+                if local.scope == -1 {
+                    self.error_at(tk, "Can't read local variable in its own initializer.")
+                }
+
+                return Some(idx);
+            }
+        }
+
+        return None;
     }
 
     fn synchronize(&mut self) {
         loop {
-            let tk = self.current.clone();
-            if tk.token_type != TokenEOF && tk.token_type != TokenSemicolon {
+            let token_type = self.current.token_type;
+            if token_type != TokenEOF && token_type != TokenSemicolon {
                 self.advance();
             } else {
                 break;
@@ -374,6 +451,69 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
     fn can_assign(&self) -> bool {
         self.current_precedence <= PrecAssignment
+    }
+
+    fn begin_scope(&mut self) {
+        self.compiler.current_scope += 1;
+    }
+
+    fn end_scope(&mut self) {
+        let scope_to_be_free = self.compiler.current_scope;
+
+        let local_count = self.compiler.local_count;
+        for idx in (0..local_count).rev() {
+            let need_free = self.compiler.locals[idx as usize]
+                .as_ref()
+                .is_some_and(|x| x.scope >= scope_to_be_free);
+
+            if need_free {
+                self.compiler.local_count -= 1;
+                self.emit_byte(OpPop);
+            } else {
+                break;
+            }
+        }
+
+        self.compiler.current_scope -= 1;
+    }
+
+    fn define_variable(&mut self, global_idx: Option<u8>) {
+        if let Some(global_idx) = global_idx {
+            self.emit_bytes(OpDefineGlobal, global_idx);
+        } else {
+            self.compiler.locals[self.compiler.local_count as usize - 1]
+                .as_mut()
+                .unwrap()
+                .scope = self.compiler.current_scope;
+        }
+    }
+
+    fn declare_local(&mut self, tk: &Token<'tk>) {
+        let idx = self.compiler.local_count as usize;
+        if idx == LOCAL_STACK_MAX_COUNT {
+            self.error_at(tk, "Too many local variables in function.");
+            return;
+        }
+
+        let current_scope = self.compiler.current_scope;
+        for idx in (0..self.compiler.local_count).rev() {
+            let local = self.compiler.locals[idx as usize].as_ref().unwrap();
+            if local.scope < current_scope {
+                break;
+            }
+
+            let existed = local.scope == current_scope && local.name == tk.lexeme;
+            if existed {
+                self.error_at(tk, "Already a variable with this name in this scope.");
+                return;
+            }
+        }
+
+        self.compiler.locals[idx] = Some(Local {
+            name: tk.lexeme,
+            scope: -1,
+        });
+        self.compiler.local_count += 1;
     }
 }
 

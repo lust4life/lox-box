@@ -39,7 +39,7 @@ impl std::process::Termination for InterpretResult {
     }
 }
 
-const STACK_MAX: usize = 256;
+const STACK_MAX: usize = u8::MAX as _;
 
 pub struct Heap {
     objects: Option<Rc<Obj>>,
@@ -168,7 +168,7 @@ impl VM {
                 OpDefineGlobal => {
                     let key = self.read_string();
                     // consider gc pause case here, peek first then pop after global set
-                    let value = self.peek();
+                    let value = self.peek(0);
                     self.globals.set(key, value, false);
                     self.pop();
                 }
@@ -188,7 +188,7 @@ impl VM {
                 }
                 OpSetGlobal => {
                     let key = self.read_string();
-                    let value = self.peek();
+                    let value = self.peek(0);
                     let exist = self.globals.set(key.clone(), value, true);
                     if !exist {
                         return self.runtime_error(
@@ -196,6 +196,15 @@ impl VM {
                                 .as_str(),
                         );
                     }
+                }
+                OpGetLocal => {
+                    let slot: u8 = self.read_byte();
+                    let value = self.stack[slot as usize].clone();
+                    self.push(value);
+                }
+                OpSetLocal => {
+                    let slot: u8 = self.read_byte();
+                    self.stack[slot as usize] = self.peek(0);
                 }
             }
         }
@@ -263,8 +272,9 @@ impl VM {
         return self.stack[self.stack_top_off_set].clone();
     }
 
-    fn peek(&mut self) -> Value {
-        return self.stack[self.stack_top_off_set - 1].clone();
+    fn peek(&mut self, delta: u8) -> Value {
+        let offset = self.stack_top_off_set - 1 - delta as usize;
+        return self.stack[offset].clone();
     }
 
     fn runtime_error(&self, msg: &str) -> InterpretResult {
@@ -284,8 +294,10 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            var a = "a";
-            !a = "value"; // Error at '=': Invalid assignment target.
+            var a = "outer";
+            {
+              var a = a; // Error at 'a': Can't read local variable in its own initializer.
+            }
         "#,
         );
     }

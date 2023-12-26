@@ -20,6 +20,8 @@ pub enum OpCode {
     OpDefineGlobal,
     OpGetGlobal,
     OpSetGlobal,
+    OpGetLocal,
+    OpSetLocal,
 }
 
 impl Into<u8> for OpCode {

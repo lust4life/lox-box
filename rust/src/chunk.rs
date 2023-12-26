@@ -223,6 +223,8 @@ impl Chunk {
             OpCode::OpDefineGlobal => simple_instruction("OP_DEFINE_GLOBAL"),
             OpCode::OpGetGlobal => simple_instruction("OP_GET_GLOBAL"),
             OpCode::OpSetGlobal => simple_instruction("OP_SET_GLOBAL"),
+            OpCode::OpGetLocal => self.byte_instruction("OP_GET_LOCAL", offset),
+            OpCode::OpSetLocal => self.byte_instruction("OP_SET_LOCAL", offset),
         };
 
         return offset + delta;
@@ -237,6 +239,12 @@ impl Chunk {
         let constant_idx = self.code[offset + 1];
         let constant_value = &self.contants[constant_idx as usize];
         println!("{name:-16} {constant_idx:4} '{constant_value:.2}'");
+        return 2;
+    }
+
+    fn byte_instruction(&self, name: &str, offset: usize) -> usize {
+        let constant_idx = self.code[offset + 1];
+        println!("{name:-16} {constant_idx:4}");
         return 2;
     }
 
