@@ -500,11 +500,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
             self.consume(TokenLeftParen, "Expect '(' after for.");
 
-            if self.match_and_advance(&[TokenSemicolon]) {
-                // no initializer
-            } else if self.match_and_advance(&[TokenVar]) {
-                self.var_declar();
-            } else {
+            if !self.var_declar() && !self.match_and_advance(&[TokenSemicolon]) {
                 self.expression_stmt();
             }
 
@@ -560,7 +556,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
     fn expression_stmt(&mut self) {
         self.expression();
-        self.consume(TokenSemicolon, "Expect ';' after value.");
+        self.consume(TokenSemicolon, "Expect ';' after expression.");
         self.emit_byte(OpPop);
     }
 
@@ -692,7 +688,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
     fn emit_loop(&mut self, start_offset: usize) {
         let end_offset = self.chunk.code_count();
-        let delta = end_offset - start_offset;
+        let delta = end_offset - start_offset + 3;
         if delta > (u16::MAX as usize) {
             self.error_at(&self.current.clone(), "Loop body too large.");
             return;

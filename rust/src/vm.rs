@@ -323,14 +323,8 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            {} // By itself.
-
-            // In a statement.
-            if (true) {}
-            if (false) {} else {}
-            
-            print "ok"; // expect: ok
-            
+            var c = 0;
+            while (c < 3) print c = c + 1;
         "#,
         );
     }
