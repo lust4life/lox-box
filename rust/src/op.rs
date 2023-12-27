@@ -22,6 +22,8 @@ pub enum OpCode {
     OpSetGlobal,
     OpGetLocal,
     OpSetLocal,
+    OpJumpIfFalse,
+    OpJump,
 }
 
 impl Into<u8> for OpCode {

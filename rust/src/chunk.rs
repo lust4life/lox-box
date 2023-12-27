@@ -187,11 +187,18 @@ impl Chunk {
         }
     }
 
+    pub fn code_count(&self) -> usize {
+        self.code.count
+    }
+
     pub fn get_one<T: Copy>(&self, offset: usize) -> T {
         let instruction = unsafe { *(self.code.ptr.add(offset) as *const T) };
         return instruction;
     }
 
+    pub fn set_one(&self, offset: usize, byte: u8) {
+        unsafe { self.code.ptr.add(offset).write(byte) };
+    }
     pub fn disassemble_instruction(&self, offset: usize) -> usize {
         print!("{offset:04} ");
 
@@ -225,6 +232,8 @@ impl Chunk {
             OpCode::OpSetGlobal => simple_instruction("OP_SET_GLOBAL"),
             OpCode::OpGetLocal => self.byte_instruction("OP_GET_LOCAL", offset),
             OpCode::OpSetLocal => self.byte_instruction("OP_SET_LOCAL", offset),
+            OpCode::OpJumpIfFalse => self.jump_instruction("OP_JUMP_IF_FALSE", 1, offset),
+            OpCode::OpJump => self.jump_instruction("OP_JUMP", 1, offset),
         };
 
         return offset + delta;
@@ -261,6 +270,17 @@ impl Chunk {
 
     pub fn get_line(&self, offset: usize) -> usize {
         return self.lines[offset];
+    }
+
+    fn jump_instruction(&self, name: &str, sign: i32, offset: usize) -> usize {
+        let delta = (self.code[offset + 1] as u16) << 8 | (self.code[offset + 2] as u16);
+        println!(
+            "{:-16} {:4} -> {}",
+            name,
+            offset,
+            sign * (delta as i32) + (3 + offset) as i32
+        );
+        return 3;
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::{
     chunk::{Chunk, Value},
-    op::OpCode::*,
+    op::OpCode::{self, *},
     scanner::{
         Scanner, Token,
         TokenType::{self, *},
@@ -385,7 +385,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn statement(&mut self) {
-        if !self.print_stmt() && !self.block_stmt() {
+        if !self.print_stmt() && !self.block_stmt() && !self.if_stmt() {
             self.expression_stmt();
         }
     }
@@ -395,6 +395,33 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             self.expression();
             self.consume(TokenSemicolon, "Expect ';' after value.");
             self.emit_byte(OpPrint);
+            return true;
+        }
+        return false;
+    }
+
+    fn if_stmt(&mut self) -> bool {
+        if self.match_and_advance(&[TokenIf]) {
+            self.consume(TokenLeftParen, "Expect '(' after 'if'.");
+            self.expression();
+            self.consume(TokenRightParen, "Expect ')' after condition.");
+
+            let then_jump = self.emit_jump(OpJumpIfFalse);
+            // cause we don't pop when check condition for OpJumpIfFalse in vm
+            self.emit_byte(OpPop);
+
+            self.statement();
+
+            let else_jump = self.emit_jump(OpJump);
+
+            self.patch_jump(then_jump);
+            self.emit_byte(OpPop);
+
+            if self.match_and_advance(&[TokenElse]) {
+                self.statement();
+            }
+            self.patch_jump(else_jump);
+
             return true;
         }
         return false;
@@ -538,6 +565,28 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         } else {
             self.compiler.mark_local_initialized();
         }
+    }
+
+    fn emit_jump(&mut self, instruction: OpCode) -> usize {
+        self.emit_byte(instruction);
+        self.emit_byte(0xff);
+        self.emit_byte(0xff);
+        return self.chunk.code_count();
+    }
+
+    fn patch_jump(&mut self, start_offset: usize) {
+        let end_offset = self.chunk.code_count();
+        let delta = end_offset - start_offset;
+        if delta > (u16::MAX as usize) {
+            self.error_at(&self.current.clone(), "Too much code to jump over.");
+            return;
+        }
+
+        let byte1 = (delta >> 8) as u8;
+        let byte2 = delta as u8;
+
+        self.chunk.set_one(start_offset - 2, byte1);
+        self.chunk.set_one(start_offset - 1, byte2);
     }
 }
 

@@ -206,6 +206,17 @@ impl VM {
                     let slot: u8 = self.read_byte();
                     self.stack[slot as usize] = self.peek(0);
                 }
+                OpJumpIfFalse => {
+                    let condition = self.peek(0);
+                    let delta = self.read_short();
+                    if !condition.cast_truthy() {
+                        self.jump(delta);
+                    }
+                }
+                OpJump => {
+                    let delta = self.read_short();
+                    self.jump(delta);
+                }
             }
         }
     }
@@ -283,6 +294,16 @@ impl VM {
         eprintln!("[line {current_line}] in script");
         return InterpretRuntimeError;
     }
+
+    fn jump(&mut self, delta: usize) {
+        self.pc += delta;
+    }
+
+    fn read_short(&mut self) -> usize {
+        let b1: u8 = self.read_byte();
+        let b2: u8 = self.read_byte();
+        return ((b1 as usize) << 8) | (b2 as usize);
+    }
 }
 
 #[cfg(test)]
@@ -294,10 +315,14 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            var a = "outer";
-            {
-              var a = a; // Error at 'a': Can't read local variable in its own initializer.
-            }
+            {} // By itself.
+
+            // In a statement.
+            if (true) {}
+            if (false) {} else {}
+            
+            print "ok"; // expect: ok
+            
         "#,
         );
     }
