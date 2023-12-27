@@ -86,11 +86,7 @@ impl<'tk> Compiler<'tk> {
             return Err("Too many local variables in function.".to_string());
         }
 
-        for local in self.locals[0..self.local_count]
-            .iter()
-            .rev()
-            .map(|x| x.as_ref().unwrap())
-        {
+        for local in self.from_end(&self.locals) {
             if local.scope < self.current_scope {
                 break;
             }
@@ -114,13 +110,19 @@ impl<'tk> Compiler<'tk> {
         self.local_count += 1;
     }
 
-    fn end_scope(&mut self) -> usize {
-        let before = self.local_count;
-        for local in self.locals[0..self.local_count]
+    fn from_end<'locals>(
+        &self,
+        locals: &'locals [Option<Local<'tk>>],
+    ) -> impl Iterator<Item = &'locals Local<'tk>> {
+        locals[0..self.local_count]
             .iter()
             .rev()
             .map(|x| x.as_ref().unwrap())
-        {
+    }
+
+    fn end_scope(&mut self) -> usize {
+        let before = self.local_count;
+        for local in self.from_end(&self.locals) {
             if local.scope >= self.current_scope {
                 self.local_count -= 1;
             } else {
