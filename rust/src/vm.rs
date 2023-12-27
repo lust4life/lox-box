@@ -210,12 +210,16 @@ impl VM {
                     let condition = self.peek(0);
                     let delta = self.read_short();
                     if !condition.cast_truthy() {
-                        self.jump(delta);
+                        self.jump(delta, false);
                     }
                 }
                 OpJump => {
                     let delta = self.read_short();
-                    self.jump(delta);
+                    self.jump(delta, false);
+                }
+                OpLoop => {
+                    let delta = self.read_short();
+                    self.jump(delta, true);
                 }
             }
         }
@@ -295,8 +299,12 @@ impl VM {
         return InterpretRuntimeError;
     }
 
-    fn jump(&mut self, delta: usize) {
-        self.pc += delta;
+    fn jump(&mut self, delta: usize, backward: bool) {
+        if backward {
+            self.pc -= delta;
+        } else {
+            self.pc += delta;
+        }
     }
 
     fn read_short(&mut self) -> usize {

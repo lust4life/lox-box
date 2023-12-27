@@ -234,6 +234,7 @@ impl Chunk {
             OpCode::OpSetLocal => self.byte_instruction("OP_SET_LOCAL", offset),
             OpCode::OpJumpIfFalse => self.jump_instruction("OP_JUMP_IF_FALSE", 1, offset),
             OpCode::OpJump => self.jump_instruction("OP_JUMP", 1, offset),
+            OpCode::OpLoop => self.jump_instruction("OP_LOOP", -1, offset),
         };
 
         return offset + delta;

@@ -263,6 +263,26 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         self.emit_constant(&tk, Value::NUMBER(number));
     }
 
+    fn and(&mut self) {
+        let and_jump = self.emit_jump(OpJumpIfFalse);
+
+        self.emit_byte(OpPop);
+        self.parse_precedence(PrecAnd);
+
+        self.patch_jump(and_jump)
+    }
+
+    fn or(&mut self) {
+        let skip_end_jump = self.emit_jump(OpJumpIfFalse);
+        let end_jump = self.emit_jump(OpJump);
+        self.patch_jump(skip_end_jump);
+
+        self.emit_byte(OpPop);
+        self.parse_precedence(PrecOr);
+
+        self.patch_jump(end_jump);
+    }
+
     fn string(&mut self) {
         let tk = self.current.clone();
         let constant = self
@@ -385,7 +405,12 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn statement(&mut self) {
-        if !self.print_stmt() && !self.block_stmt() && !self.if_stmt() {
+        if !self.print_stmt()
+            && !self.block_stmt()
+            && !self.if_stmt()
+            && !self.while_stmt()
+            && !self.for_stmt()
+        {
             self.expression_stmt();
         }
     }
@@ -440,6 +465,82 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             }
 
             self.consume(TokenRightBrace, "Expect '}' after block.");
+
+            self.end_scope();
+            return true;
+        }
+        return false;
+    }
+
+    fn while_stmt(&mut self) -> bool {
+        if self.match_and_advance(&[TokenWhile]) {
+            let loop_start = self.chunk.code_count();
+
+            self.consume(TokenLeftParen, "Expect '(' after while.");
+            self.expression();
+            self.consume(TokenRightParen, "Expect ')' after condition.");
+
+            let exit_jump = self.emit_jump(OpJumpIfFalse);
+
+            self.emit_byte(OpPop);
+            self.statement();
+
+            self.emit_loop(loop_start);
+
+            self.patch_jump(exit_jump);
+
+            return true;
+        }
+        return false;
+    }
+
+    fn for_stmt(&mut self) -> bool {
+        if self.match_and_advance(&[TokenFor]) {
+            self.begin_scope();
+
+            self.consume(TokenLeftParen, "Expect '(' after for.");
+
+            if self.match_and_advance(&[TokenSemicolon]) {
+                // no initializer
+            } else if self.match_and_advance(&[TokenVar]) {
+                self.var_declar();
+            } else {
+                self.expression_stmt();
+            }
+
+            let mut loop_start = self.chunk.code_count();
+
+            let mut exit_jump: Option<usize> = None;
+            if !self.match_and_advance(&[TokenSemicolon]) {
+                self.expression();
+                self.consume(TokenSemicolon, "Expect ';' after loop condition.");
+                exit_jump = Some(self.emit_jump(OpJumpIfFalse));
+                self.emit_byte(OpPop);
+            }
+
+            if !self.match_and_advance(&[TokenRightParen]) {
+                let body_jump = self.emit_jump(OpJump);
+
+                let increment_start = self.chunk.code_count();
+
+                self.expression();
+                self.emit_byte(OpPop);
+                self.consume(TokenRightParen, "Expect ')' after clauses.");
+
+                self.emit_loop(loop_start);
+                loop_start = increment_start;
+
+                self.patch_jump(body_jump);
+            }
+
+            self.statement();
+
+            self.emit_loop(loop_start);
+
+            if let Some(exit_jump) = exit_jump {
+                self.patch_jump(exit_jump);
+                self.emit_byte(OpPop);
+            }
 
             self.end_scope();
             return true;
@@ -588,6 +689,22 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         self.chunk.set_one(start_offset - 2, byte1);
         self.chunk.set_one(start_offset - 1, byte2);
     }
+
+    fn emit_loop(&mut self, start_offset: usize) {
+        let end_offset = self.chunk.code_count();
+        let delta = end_offset - start_offset;
+        if delta > (u16::MAX as usize) {
+            self.error_at(&self.current.clone(), "Loop body too large.");
+            return;
+        }
+
+        let byte1 = (delta >> 8) as u8;
+        let byte2 = delta as u8;
+
+        self.emit_byte(OpLoop);
+        self.emit_byte(byte1);
+        self.emit_byte(byte2);
+    }
 }
 
 fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
@@ -631,7 +748,7 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
         (TokenIdentifier, Some(Parser::variable), None, PrecNone),
         (TokenString, Some(Parser::string), None, PrecNone),
         (TokenNumber, Some(Parser::number), None, PrecNone),
-        (TokenAnd, None, None, PrecNone),
+        (TokenAnd, None, Some(Parser::and), PrecAnd),
         (TokenClass, None, None, PrecNone),
         (TokenElse, None, None, PrecNone),
         (TokenFalse, Some(Parser::literal), None, PrecNone),
@@ -639,7 +756,7 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
         (TokenFun, None, None, PrecNone),
         (TokenIf, None, None, PrecNone),
         (TokenNil, Some(Parser::literal), None, PrecNone),
-        (TokenOr, None, None, PrecNone),
+        (TokenOr, None, Some(Parser::or), PrecOr),
         (TokenPrint, None, None, PrecNone),
         (TokenReturn, None, None, PrecNone),
         (TokenSuper, None, None, PrecNone),

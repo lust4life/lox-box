@@ -24,6 +24,7 @@ pub enum OpCode {
     OpSetLocal,
     OpJumpIfFalse,
     OpJump,
+    OpLoop,
 }
 
 impl Into<u8> for OpCode {
