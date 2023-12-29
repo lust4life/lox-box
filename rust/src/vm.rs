@@ -451,9 +451,7 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            fun foo(a) {
-                var a; // Error at 'a': Already a variable with this name in this scope.
-              }
+            return "wat"; // Error at 'return': Can't return from top-level code.
         "#,
         );
     }

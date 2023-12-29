@@ -462,6 +462,10 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     fn return_stmt(&mut self) -> bool {
         let matched = self.match_and_advance(TokenReturn);
         if matched {
+            if self.compiler.function.is_none() {
+                self.error_at(&self.current.clone(), "Can't return from top-level code.");
+            }
+
             if self.match_and_advance(TokenSemicolon) {
                 self.emit_byte(OpNil);
             } else {
