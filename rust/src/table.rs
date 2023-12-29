@@ -68,29 +68,33 @@ impl Table {
         }
     }
 
-    pub fn set(&mut self, key: KeyType, value: Value, ensure_exist: bool) -> bool {
+    pub fn set(&mut self, key: KeyType, value: Value, only_update: bool) -> bool {
         if self.is_need_grow() {
             self.grow_array();
         }
 
         let (idx, is_tombsome) = self.find_key_idx(&key);
+        let exist;
         match self.entries.read(idx) {
             Some(entry) => {
                 entry.value = value;
-                return true;
+                exist = true;
             }
             None => {
-                if !ensure_exist {
+                if !only_update {
                     let entry = Some(Entry {
                         key: Some(key),
                         value,
                     });
                     self.entries.write(idx, entry, !is_tombsome);
+                    exist = true;
+                } else {
+                    exist = false;
                 }
-
-                return !ensure_exist;
             }
-        }
+        };
+
+        return exist;
     }
 
     pub fn get(&self, key: &KeyType) -> Option<&Value> {

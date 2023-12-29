@@ -1,5 +1,5 @@
 use crate::{
-    object::{Obj, ObjFunction, ObjString, ObjType},
+    object::{Obj, ObjFunction, ObjNative, ObjString, ObjType},
     op::OpCode,
 };
 use std::{
@@ -140,6 +140,15 @@ impl Value {
         if let Value::OBJ(obj) = self {
             if let ObjType::ObjFunction(inner) = &obj.ty {
                 return Some(inner.clone());
+            }
+        }
+        return None;
+    }
+
+    pub fn as_obj_native(&self) -> Option<ObjNative> {
+        if let Value::OBJ(obj) = self {
+            if let ObjType::ObjNative(inner) = obj.ty {
+                return Some(inner);
             }
         }
         return None;

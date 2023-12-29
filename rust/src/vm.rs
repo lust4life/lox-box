@@ -1,9 +1,9 @@
-use std::{borrow::Borrow, ops::FromResidual, process::ExitCode, rc::Rc};
+use std::{borrow::Borrow, ops::FromResidual, process::ExitCode, rc::Rc, time::SystemTime};
 
 use crate::{
     chunk::{Chunk, Value},
     compiler::{self},
-    object::{Obj, ObjFunction, ObjString, ObjType},
+    object::{Obj, ObjFunction, ObjNative, ObjString, ObjType},
     op::OpCode::{self, *},
     table::Table,
 };
@@ -169,6 +169,11 @@ pub fn interpret(source: &str) -> InterpretResult {
     return vm.run();
 }
 
+fn clock_native(_args: &[Value]) -> Value {
+    let unix_timestamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs_f64();
+    return Value::NUMBER(unix_timestamp);
+}
+
 impl VM {
     pub fn new(chunk: Chunk, heap: Heap) -> Self {
         let mut this = Self {
@@ -180,10 +185,18 @@ impl VM {
             frame_count: 0,
         };
 
+        this.define_native("clock", clock_native);
+
         let first_frame = CallFrame::new(FrameType::Script(chunk), this.stack_count);
         this.frames[0] = Some(first_frame);
         this.frame_count = 1;
         return this;
+    }
+
+    fn define_native(&mut self, name: &str, native_func: ObjNative) {
+        let key = self.heap.allocate_string(name).cast_obj_string();
+        let native_func = self.heap.allocate(ObjType::ObjNative(native_func));
+        self.globals.set(key, native_func, false);
     }
 
     fn add_frame(&mut self, func: Rc<ObjFunction>) {
@@ -347,6 +360,12 @@ impl VM {
                         }
 
                         self.add_frame(function);
+                    } else if let Some(native) = self.peek(arg_count).as_obj_native() {
+                        let stack_before_arg = self.stack_count - arg_count as usize;
+                        let arges = &self.stack[stack_before_arg..self.stack_count];
+                        self.stack_count = stack_before_arg - 1; // 1 is for native fn itset
+                        let res = native(arges);
+                        self.push(res);
                     } else {
                         return self.runtime_error("Can only call functions and classes.");
                     }
@@ -449,9 +468,8 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            // [line 3] Error: Unexpected character.
-            // [java line 3] Error at 'b': Expect ')' after arguments.
-            foo(a | b);
+            var start = clock();
+            print clock() - start;
         "#,
         );
     }
