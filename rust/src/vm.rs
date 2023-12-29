@@ -451,7 +451,12 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            return "wat"; // Error at 'return': Can't return from top-level code.
+            fun f() {
+                return;
+                print "bad";
+              }
+              
+            print f(); // expect: nil
         "#,
         );
     }

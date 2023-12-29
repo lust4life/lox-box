@@ -471,8 +471,9 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             } else {
                 self.expression();
                 self.consume(TokenSemicolon, "Expect ';' after return value.");
-                self.emit_byte(OpReturn);
             }
+
+            self.emit_byte(OpReturn);
         }
         return matched;
     }
