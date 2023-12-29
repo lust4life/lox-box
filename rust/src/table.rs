@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::{
     chunk::{Value, Vec},
-    object::Obj,
+    object::ObjString,
 };
 
 pub struct Table {
@@ -17,7 +17,7 @@ impl Default for Table {
     }
 }
 
-type KeyType = Rc<Obj>;
+type KeyType = Rc<ObjString>;
 
 impl Table {
     const MAX_LOAD: f64 = 0.75;
@@ -45,7 +45,7 @@ impl Table {
     }
 
     fn find_key_idx(&self, key: &KeyType) -> (usize, bool) {
-        let mut idx = key.ty.cast_string().hash % self.entries.capacity;
+        let mut idx = key.hash % self.entries.capacity;
         let mut tombestone_idx: Option<usize> = None;
         loop {
             match self.entries.read(idx) {
@@ -106,7 +106,7 @@ impl Table {
         return item;
     }
 
-    pub fn delete(&mut self, key: &KeyType) {
+    fn delete(&mut self, key: &KeyType) {
         if self.entries.count == 0 {
             return;
         }
@@ -144,8 +144,7 @@ impl Table {
             match self.entries.read(idx) {
                 Some(entry) => match entry.key {
                     Some(ref found_key) => {
-                        let found_key_str = found_key.ty.cast_string();
-                        if found_key_str.hash == hash && found_key_str.chars == key {
+                        if found_key.hash == hash && found_key.chars == key {
                             return Some(found_key.clone());
                         }
                     }

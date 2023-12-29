@@ -1,4 +1,10 @@
-use std::{ptr, rc::Rc};
+use std::{
+    fmt::{Debug, Display},
+    ptr,
+    rc::Rc,
+};
+
+use crate::chunk::Chunk;
 
 #[derive(Debug, Clone)]
 pub struct ObjString {
@@ -31,17 +37,41 @@ impl ObjString {
     }
 }
 
-#[derive(PartialEq, Debug)]
-pub enum ObjType {
-    ObjString(ObjString),
+pub struct ObjFunction {
+    chunk: Chunk,
+    name: Rc<ObjString>,
+    arity: usize,
 }
 
-impl ObjType {
-    pub fn cast_string(&self) -> &ObjString {
-        match self {
-            ObjType::ObjString(inner) => inner,
+impl ObjFunction {
+    pub fn new(name: Rc<ObjString>, arity: usize) -> Self {
+        Self {
+            chunk: Chunk::new(),
+            name,
+            arity,
         }
     }
+}
+
+impl PartialEq for ObjFunction {
+    fn eq(&self, other: &Self) -> bool {
+        return ptr::eq(self, other);
+    }
+}
+
+impl Debug for ObjFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObjFunction")
+            .field("name", &self.name)
+            .field("arity", &self.arity)
+            .finish()
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ObjType {
+    ObjString(Rc<ObjString>),
+    ObjFunction(Rc<ObjFunction>),
 }
 
 #[derive(Debug)]
@@ -56,9 +86,25 @@ impl PartialEq for Obj {
     }
 }
 
+impl Display for Obj {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.ty {
+            ObjType::ObjString(inner) => f.write_str(&inner.chars),
+            ObjType::ObjFunction(inner) => write!(f, "<fn {}>", inner.name.chars),
+        }
+    }
+}
+
 impl Obj {
-    pub fn new_string(obj_str: ObjString, next: Option<Rc<Obj>>) -> Self {
+    pub fn from_obj_string(obj_str: Rc<ObjString>, next: Option<Rc<Obj>>) -> Self {
         let ty = ObjType::ObjString(obj_str);
         Self { ty, next }
+    }
+
+    pub fn cast_obj_string(&self) -> Rc<ObjString> {
+        match &self.ty {
+            ObjType::ObjString(inner) => inner.clone(),
+            _ => panic!("expected to be a string"),
+        }
     }
 }

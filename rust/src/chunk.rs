@@ -1,7 +1,4 @@
-use crate::{
-    object::{Obj, ObjType},
-    op::OpCode,
-};
+use crate::{object::Obj, op::OpCode};
 use std::{
     alloc,
     alloc::Layout,
@@ -141,19 +138,17 @@ impl Neg for Value {
 
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.to_owned() {
+        match self {
             Value::NIL => f.write_str("nil"),
             Value::BOOL(inner) => {
-                if inner {
+                if *inner {
                     f.write_str("true")
                 } else {
                     f.write_str("false")
                 }
             }
             Value::NUMBER(inner) => write!(f, "{}", inner),
-            Value::OBJ(obj) => match obj.ty {
-                ObjType::ObjString(ref inner) => f.write_str(&inner.chars),
-            },
+            Value::OBJ(obj) => write!(f, "{}", obj),
         }
     }
 }

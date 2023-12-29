@@ -55,30 +55,37 @@ impl Heap {
     }
 
     pub fn allocate_string(&mut self, content: &str) -> Value {
+        let obj_str;
+
         let hash = ObjString::hash_string(content);
         if let Some(str_v) = self.strings.find_key(content, hash) {
-            return Value::OBJ(str_v);
+            obj_str = str_v;
+        } else {
+            obj_str = Rc::new(ObjString {
+                chars: content.to_string(),
+                hash,
+            });
+            self.strings.set(Rc::clone(&obj_str), Value::NIL, false);
         }
 
-        let obj_str = ObjString {
-            chars: content.to_string(),
-            hash,
-        };
         let root = std::mem::take(&mut self.objects);
-        let rc_obj = Rc::new(Obj::new_string(obj_str, root));
-        self.strings.set(Rc::clone(&rc_obj), Value::NIL, false);
-
+        let rc_obj = Rc::new(Obj::from_obj_string(obj_str, root));
         self.objects = Some(Rc::clone(&rc_obj));
         let str_v = Value::OBJ(rc_obj);
         return str_v;
     }
 }
 
+struct CallFrame {
+    pc: usize,
+    stack_offset: usize,
+}
+
 pub struct VM {
     chunk: Chunk,
     pc: usize,
     stack: [Value; STACK_MAX],
-    stack_top_off_set: usize,
+    stack_top_offset: usize,
     heap: Heap,
     globals: Table,
 }
@@ -96,7 +103,7 @@ impl VM {
             chunk: chunk,
             pc: 0,
             stack: [const { Value::NIL }; STACK_MAX],
-            stack_top_off_set: 0,
+            stack_top_offset: 0,
             heap,
             globals: Table::new(),
         };
@@ -104,7 +111,7 @@ impl VM {
 
     fn debug_trace_execution(&self) {
         print!("          ");
-        for offset in 0..self.stack_top_off_set {
+        for offset in 0..self.stack_top_offset {
             let value = &self.stack[offset];
             print!("[ {} ]", value)
         }
@@ -180,8 +187,7 @@ impl VM {
                         }
                         None => {
                             return self.runtime_error(
-                                format!("Undefined variable '{}'.", key.ty.cast_string().chars)
-                                    .as_str(),
+                                format!("Undefined variable '{}'.", key.chars).as_str(),
                             );
                         }
                     }
@@ -192,8 +198,7 @@ impl VM {
                     let exist = self.globals.set(key.clone(), value, true);
                     if !exist {
                         return self.runtime_error(
-                            format!("Undefined variable '{}'.", key.ty.cast_string().chars)
-                                .as_str(),
+                            format!("Undefined variable '{}'.", key.chars).as_str(),
                         );
                     }
                 }
@@ -250,6 +255,7 @@ impl VM {
                     let res = self.heap.allocate_string(concated.as_str());
                     return Ok(res);
                 }
+                _ => return Err("Operands must be two numbers or two strings.".to_owned()),
             },
             _ => match instruction {
                 OpAdd => return Err("Operands must be two numbers or two strings.".to_owned()),
@@ -270,25 +276,25 @@ impl VM {
         return constant;
     }
 
-    fn read_string(&mut self) -> Rc<Obj> {
+    fn read_string(&mut self) -> Rc<ObjString> {
         match self.read_constant() {
-            Value::OBJ(obj) => return obj,
+            Value::OBJ(obj) => return obj.cast_obj_string(),
             other => panic!("should be a obj string, but found {}", other),
         }
     }
 
     fn push(&mut self, value: Value) {
-        self.stack[self.stack_top_off_set] = value;
-        self.stack_top_off_set += 1;
+        self.stack[self.stack_top_offset] = value;
+        self.stack_top_offset += 1;
     }
 
     fn pop(&mut self) -> Value {
-        self.stack_top_off_set -= 1;
-        return self.stack[self.stack_top_off_set].clone();
+        self.stack_top_offset -= 1;
+        return self.stack[self.stack_top_offset].clone();
     }
 
     fn peek(&mut self, delta: u8) -> Value {
-        let offset = self.stack_top_off_set - 1 - delta as usize;
+        let offset = self.stack_top_offset - 1 - delta as usize;
         return self.stack[offset].clone();
     }
 
