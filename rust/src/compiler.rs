@@ -801,7 +801,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 }
             }
 
-            self.consume(TokenRightParen, "Expect ')' after function.");
+            self.consume(TokenRightParen, "Expect ')' after parameters.");
 
             self.consume(TokenLeftBrace, "Expect '{' before function body.");
             self.block();
