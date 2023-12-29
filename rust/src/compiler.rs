@@ -784,16 +784,13 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
             if self.next.token_type != TokenRightParen {
                 loop {
-                    let idx = self.parse_variable("Expect parameter name.");
-                    self.define_variable(idx);
-
                     func_arity += 1;
                     if func_arity > 255 {
-                        self.error_at(
-                            &self.current.clone(),
-                            "Can't have more than 255 parameters.",
-                        )
+                        self.error_at(&self.next.clone(), "Can't have more than 255 parameters.")
                     }
+
+                    let idx = self.parse_variable("Expect parameter name.");
+                    self.define_variable(idx);
 
                     if !self.match_and_advance(TokenComma) {
                         break;
