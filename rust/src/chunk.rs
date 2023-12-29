@@ -136,14 +136,13 @@ impl Value {
         panic!("expected to be a ObjString");
     }
 
-    pub fn cast_obj_function(&self) -> Rc<ObjFunction> {
+    pub fn as_obj_function(&self) -> Option<Rc<ObjFunction>> {
         if let Value::OBJ(obj) = self {
             if let ObjType::ObjFunction(inner) = &obj.ty {
-                return inner.clone();
+                return Some(inner.clone());
             }
         }
-
-        panic!("expected to be a ObjFunction");
+        return None;
     }
 }
 
