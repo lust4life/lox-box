@@ -1,9 +1,4 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    ops::FromResidual,
-    process::ExitCode,
-    rc::Rc,
-};
+use std::{borrow::Borrow, ops::FromResidual, process::ExitCode, rc::Rc};
 
 use crate::{
     chunk::{Chunk, Value},

@@ -1,8 +1,11 @@
-use std::{borrow::BorrowMut, rc::Rc};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    rc::Rc,
+};
 
 use crate::{
     chunk::{Chunk, Value},
-    object::{Obj, ObjFunction, ObjString},
+    object::{ObjFunction, ObjString},
     op::OpCode::{self, *},
     scanner::{
         Scanner, Token,
@@ -293,6 +296,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
             let msg = tk.lexeme;
             self.error_at(&tk, msg);
+            return;
         }
     }
 
@@ -404,9 +408,11 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
             if self.can_assign() && self.match_and_advance(TokenEqual) {
                 self.error_at(&self.current.clone(), "Invalid assignment target.");
+                return;
             }
         } else {
             self.error_at(&self.current.clone(), "Expect expression.");
+            return;
         }
 
         self.current_precedence = previous;
@@ -464,6 +470,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         if matched {
             if self.compiler.function.is_none() {
                 self.error_at(&self.current.clone(), "Can't return from top-level code.");
+                return matched;
             }
 
             if self.match_and_advance(TokenSemicolon) {
@@ -786,7 +793,8 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 loop {
                     func_arity += 1;
                     if func_arity > 255 {
-                        self.error_at(&self.next.clone(), "Can't have more than 255 parameters.")
+                        self.error_at(&self.next.clone(), "Can't have more than 255 parameters.");
+                        return matched;
                     }
 
                     let idx = self.parse_variable("Expect parameter name.");
@@ -820,8 +828,17 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
         if self.next.token_type != TokenRightParen {
             loop {
+                if arg_count == 255 {
+                    self.error_at(
+                        self.next.clone().borrow(),
+                        "Can't have more than 255 arguments.",
+                    );
+                    return;
+                }
+
                 self.expression();
                 arg_count += 1;
+
                 if !self.match_and_advance(TokenComma) {
                     break;
                 }
