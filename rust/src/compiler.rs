@@ -514,20 +514,24 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         if self.match_and_advance(TokenLeftBrace) {
             self.begin_scope();
 
-            loop {
-                let token_type = self.next.token_type;
-                if !(token_type != TokenEOF && token_type != TokenRightBrace) {
-                    break;
-                }
-                self.declaration();
-            }
-
-            self.consume(TokenRightBrace, "Expect '}' after block.");
+            self.block();
 
             self.end_scope();
             return true;
         }
         return false;
+    }
+
+    fn block(&mut self) {
+        loop {
+            let token_type = self.next.token_type;
+            if !(token_type != TokenEOF && token_type != TokenRightBrace) {
+                break;
+            }
+            self.declaration();
+        }
+
+        self.consume(TokenRightBrace, "Expect '}' after block.");
     }
 
     fn while_stmt(&mut self) -> bool {
@@ -794,7 +798,8 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
             self.consume(TokenRightParen, "Expect ')' after function.");
 
-            self.block_stmt();
+            self.consume(TokenLeftBrace, "Expect '{' before function body.");
+            self.block();
 
             self.emit_byte(OpReturn); // in case user doesn't specify one
             let func = self.compiler.end_parse_function(func_arity);
