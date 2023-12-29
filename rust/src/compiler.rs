@@ -233,6 +233,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             return None;
         }
 
+        self.emit_byte(OpNil);
         self.emit_byte(OpReturn);
         return Some(self.chunk);
     }
@@ -454,9 +455,24 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             && !self.if_stmt()
             && !self.while_stmt()
             && !self.for_stmt()
+            && !self.return_stmt()
         {
             self.expression_stmt();
         }
+    }
+
+    fn return_stmt(&mut self) -> bool {
+        let matched = self.match_and_advance(TokenReturn);
+        if matched {
+            if self.match_and_advance(TokenSemicolon) {
+                self.emit_byte(OpNil);
+            } else {
+                self.expression();
+                self.consume(TokenSemicolon, "Expect ';' after return value.");
+                self.emit_byte(OpReturn);
+            }
+        }
+        return matched;
     }
 
     fn print_stmt(&mut self) -> bool {

@@ -154,7 +154,7 @@ const STACK_MAX: usize = u8::MAX as usize * FRAMES_MAX;
 
 pub struct VM {
     stack: [Value; STACK_MAX],
-    stack_top_offset: usize,
+    stack_count: usize,
 
     frames: [Option<CallFrame>; FRAMES_MAX],
     frame_count: usize,
@@ -174,21 +174,21 @@ impl VM {
     pub fn new(chunk: Chunk, heap: Heap) -> Self {
         let mut this = Self {
             stack: [const { Value::NIL }; STACK_MAX],
-            stack_top_offset: 0,
+            stack_count: 0,
             heap,
             globals: Table::new(),
             frames: [const { None }; FRAMES_MAX],
             frame_count: 0,
         };
 
-        let first_frame = CallFrame::new(FrameType::Script(chunk), this.stack_top_offset);
+        let first_frame = CallFrame::new(FrameType::Script(chunk), this.stack_count);
         this.frames[0] = Some(first_frame);
         this.frame_count = 1;
         return this;
     }
 
     fn add_frame(&mut self, func: Rc<ObjFunction>) {
-        let frame_stack_offset = self.stack_top_offset - func.arity;
+        let frame_stack_offset = self.stack_count - func.arity;
         let frame = CallFrame::new(FrameType::Function(func), frame_stack_offset);
         self.frames[self.frame_count] = Some(frame);
         self.frame_count += 1;
@@ -200,7 +200,7 @@ impl VM {
 
     fn debug_trace_execution(&mut self) {
         print!("          ");
-        for offset in 0..self.stack_top_offset {
+        for offset in 0..self.stack_count {
             let value = &self.stack[offset];
             print!("[ {} ]", value)
         }
@@ -240,9 +240,17 @@ impl VM {
                     self.push(Value::BOOL(lhs == rhs));
                 }
                 OpReturn => {
+                    let v = self.pop();
+
                     // check if there are out
                     if self.current_frame().is_function() {
-                        self.frame_count -= 1;
+                        self.stack_count = self.current_frame().stack_offset;
+
+                        self.pop(); // pop the fn itself
+
+                        self.frame_count -= 1; // return to the upper frame
+
+                        self.push(v);
                         continue;
                     }
                     return InterpretResult::InterpretOk;
@@ -398,17 +406,17 @@ impl VM {
     }
 
     fn push(&mut self, value: Value) {
-        self.stack[self.stack_top_offset] = value;
-        self.stack_top_offset += 1;
+        self.stack[self.stack_count] = value;
+        self.stack_count += 1;
     }
 
     fn pop(&mut self) -> Value {
-        self.stack_top_offset -= 1;
-        return self.stack[self.stack_top_offset].clone();
+        self.stack_count -= 1;
+        return self.stack[self.stack_count].clone();
     }
 
     fn peek(&mut self, delta: u8) -> Value {
-        let offset = self.stack_top_offset - 1 - delta as usize;
+        let offset = self.stack_count - 1 - delta as usize;
         return self.stack[offset].clone();
     }
 
@@ -430,12 +438,8 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            fun a(b,c,d) {
-                print b + c + d;
-              }
-              
-              print 4 + a(1,2,3);
-              print("done !!!");
+            1 >= "1"; // expect runtime error: Operands must be numbers.
+
         "#,
         );
     }
