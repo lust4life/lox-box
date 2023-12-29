@@ -98,10 +98,6 @@ impl<'tk> Compiler<'tk> {
     }
 
     fn declare_local(&mut self, tk: &Token<'tk>) -> Result<(), String> {
-        if self.local_count == LOCAL_STACK_MAX_COUNT {
-            return Err("Too many local variables in function.".to_string());
-        }
-
         for local in self.from_end(&self.locals) {
             if local.scope < self.current_scope {
                 break;
@@ -114,7 +110,9 @@ impl<'tk> Compiler<'tk> {
         }
 
         self.add_local(tk.lexeme);
-
+        if self.local_count == LOCAL_STACK_MAX_COUNT {
+            return Err("Too many local variables in function.".to_string());
+        }
         return Ok(());
     }
 

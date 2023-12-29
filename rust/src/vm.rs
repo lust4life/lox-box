@@ -147,6 +147,10 @@ impl CallFrame {
             FrameType::Script(_) => false,
         }
     }
+
+    fn get_line(&self) -> usize {
+        return self.chunk().get_line(self.pc - 1);
+    }
 }
 
 const FRAMES_MAX: usize = 64;
@@ -344,7 +348,7 @@ impl VM {
                     }
 
                     if self.frame_count == FRAMES_MAX {
-                        return self.runtime_error("Stack overflow");
+                        return self.runtime_error("Stack overflow.");
                     }
 
                     self.add_frame(function);
@@ -420,11 +424,20 @@ impl VM {
         return self.stack[offset].clone();
     }
 
-    fn runtime_error(&self, msg: &str) -> InterpretResult {
+    fn runtime_error(&mut self, msg: &str) -> InterpretResult {
         eprintln!("{}", msg);
 
-        // let current_line = self.curr.get_line(self.pc - 1);
-        // eprintln!("[line {current_line}] in script");
+        for i in (0..self.frame_count).rev() {
+            let frame = self.frames[i].as_ref().unwrap();
+            let name = match &frame.ty {
+                FrameType::Function(func) => format!("{}()", func.name.chars),
+                FrameType::Script(_) => "script".to_owned(),
+            };
+            let current_line = self.current_frame().get_line();
+
+            eprintln!("[line {current_line}] in {name}");
+        }
+
         return InterpretRuntimeError;
     }
 }
@@ -438,8 +451,28 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            1 >= "1"; // expect runtime error: Operands must be numbers.
-
+            fun foo() {
+                var a1;
+                var a2;
+                var a3;
+                var a4;
+                var a5;
+                var a6;
+                var a7;
+                var a8;
+                var a9;
+                var a10;
+                var a11;
+                var a12;
+                var a13;
+                var a14;
+                var a15;
+                var a16;
+                foo(); // expect runtime error: Stack overflow.
+              }
+              
+              foo();
+              
         "#,
         );
     }
