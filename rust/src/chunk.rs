@@ -1,4 +1,7 @@
-use crate::{object::Obj, op::OpCode};
+use crate::{
+    object::{Obj, ObjString, ObjType},
+    op::OpCode,
+};
 use std::{
     alloc,
     alloc::Layout,
@@ -121,6 +124,16 @@ impl Value {
             Value::BOOL(inner) => inner.to_owned(),
             _ => true,
         }
+    }
+
+    pub fn cast_obj_string(&self) -> Rc<ObjString> {
+        if let Value::OBJ(obj) = self {
+            if let ObjType::ObjString(inner) = &obj.ty {
+                return inner.clone();
+            }
+        }
+
+        panic!("expected to be a string");
     }
 }
 

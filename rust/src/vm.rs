@@ -3,7 +3,7 @@ use std::{ops::FromResidual, process::ExitCode, rc::Rc};
 use crate::{
     chunk::{Chunk, Value},
     compiler::{self},
-    object::{Obj, ObjString, ObjType},
+    object::{Obj, ObjFunction, ObjString, ObjType},
     op::OpCode::{self, *},
     table::Table,
 };
@@ -54,6 +54,14 @@ impl Heap {
         }
     }
 
+    fn allocate(&mut self, ty: ObjType) -> Value {
+        let root = std::mem::take(&mut self.objects);
+        let rc_obj = Rc::new(Obj { ty: ty, next: root });
+        self.objects = Some(Rc::clone(&rc_obj));
+        let str_v = Value::OBJ(rc_obj);
+        str_v
+    }
+
     pub fn allocate_string(&mut self, content: &str) -> Value {
         let obj_str;
 
@@ -68,11 +76,13 @@ impl Heap {
             self.strings.set(Rc::clone(&obj_str), Value::NIL, false);
         }
 
-        let root = std::mem::take(&mut self.objects);
-        let rc_obj = Rc::new(Obj::from_obj_string(obj_str, root));
-        self.objects = Some(Rc::clone(&rc_obj));
-        let str_v = Value::OBJ(rc_obj);
-        return str_v;
+        let v = self.allocate(ObjType::ObjString(obj_str));
+        return v;
+    }
+
+    pub fn allocate_function(&mut self, func: ObjFunction) -> Value {
+        let v = self.allocate(ObjType::ObjFunction(Rc::new(func)));
+        return v;
     }
 }
 
@@ -277,10 +287,7 @@ impl VM {
     }
 
     fn read_string(&mut self) -> Rc<ObjString> {
-        match self.read_constant() {
-            Value::OBJ(obj) => return obj.cast_obj_string(),
-            other => panic!("should be a obj string, but found {}", other),
-        }
+        return self.read_constant().cast_obj_string();
     }
 
     fn push(&mut self, value: Value) {
@@ -329,8 +336,11 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            var c = 0;
-            while (c < 3) print c = c + 1;
+            fun areWeHavingItYet() {
+                print "Yes we are!";
+              }
+              
+              print areWeHavingItYet;
         "#,
         );
     }

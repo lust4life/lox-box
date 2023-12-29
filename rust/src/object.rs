@@ -38,17 +38,17 @@ impl ObjString {
 }
 
 pub struct ObjFunction {
-    chunk: Chunk,
-    name: Rc<ObjString>,
-    arity: usize,
+    pub chunk: Chunk,
+    pub name: Rc<ObjString>,
+    pub arity: usize,
 }
 
 impl ObjFunction {
-    pub fn new(name: Rc<ObjString>, arity: usize) -> Self {
+    pub fn new(name: Rc<ObjString>) -> Self {
         Self {
             chunk: Chunk::new(),
             name,
-            arity,
+            arity: 0,
         }
     }
 }
@@ -91,20 +91,6 @@ impl Display for Obj {
         match &self.ty {
             ObjType::ObjString(inner) => f.write_str(&inner.chars),
             ObjType::ObjFunction(inner) => write!(f, "<fn {}>", inner.name.chars),
-        }
-    }
-}
-
-impl Obj {
-    pub fn from_obj_string(obj_str: Rc<ObjString>, next: Option<Rc<Obj>>) -> Self {
-        let ty = ObjType::ObjString(obj_str);
-        Self { ty, next }
-    }
-
-    pub fn cast_obj_string(&self) -> Rc<ObjString> {
-        match &self.ty {
-            ObjType::ObjString(inner) => inner.clone(),
-            _ => panic!("expected to be a string"),
         }
     }
 }
