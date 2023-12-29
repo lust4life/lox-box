@@ -153,6 +153,7 @@ impl<'tk> Compiler<'tk> {
     fn begin_parse_function(&mut self, name: Rc<ObjString>) {
         let current = std::mem::replace(self, Compiler::new());
         *self = Compiler::new_with_enclosing(current, ObjFunction::new(name));
+        self.current_scope += 1; // cause we are in function now
     }
 
     fn end_parse_function(&mut self, func_arity: usize) -> ObjFunction {
@@ -781,6 +782,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
             self.block_stmt();
 
+            self.emit_byte(OpReturn); // in case user doesn't specify one
             let func = self.compiler.end_parse_function(func_arity);
             let func = self.heap.allocate_function(func);
             self.emit_constant(&func_name_tk, func);
@@ -789,6 +791,24 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         }
 
         return matched;
+    }
+
+    fn call(&mut self) {
+        let mut arg_count = 0u8;
+
+        if self.next.token_type != TokenRightParen {
+            loop {
+                self.expression();
+                arg_count += 1;
+                if !self.match_and_advance(TokenComma) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenRightParen, "Expect ')' after arguments.");
+
+        self.emit_bytes(OpCall, arg_count);
     }
 }
 
@@ -801,7 +821,12 @@ fn init_rules<'code, 'tk>() -> [Option<ParseRule<'code, 'tk>>; RULE_LENGTH] {
             None as Option<ParseFun<'code, 'tk>>,
             PrecNone,
         ),
-        (TokenLeftParen, Some(Parser::grouping), None, PrecNone),
+        (
+            TokenLeftParen,
+            Some(Parser::grouping),
+            Some(Parser::call),
+            PrecCall,
+        ),
         (TokenRightParen, None, None, PrecNone),
         (TokenLeftBrace, None, None, PrecNone),
         (TokenRightBrace, None, None, PrecNone),

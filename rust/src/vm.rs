@@ -1,4 +1,9 @@
-use std::{ops::FromResidual, process::ExitCode, rc::Rc};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    ops::FromResidual,
+    process::ExitCode,
+    rc::Rc,
+};
 
 use crate::{
     chunk::{Chunk, Value},
@@ -38,8 +43,6 @@ impl std::process::Termination for InterpretResult {
         }
     }
 }
-
-const STACK_MAX: usize = u8::MAX as _;
 
 pub struct Heap {
     objects: Option<Rc<Obj>>,
@@ -86,16 +89,76 @@ impl Heap {
     }
 }
 
+enum FrameType {
+    Function(Rc<ObjFunction>),
+    Script(Chunk),
+}
+
 struct CallFrame {
+    ty: FrameType,
     pc: usize,
+
     stack_offset: usize,
 }
 
+impl CallFrame {
+    fn new(ty: FrameType, stack_offset: usize) -> Self {
+        Self {
+            ty,
+            pc: 0,
+            stack_offset,
+        }
+    }
+
+    fn disassemble_instruction(&self) {
+        self.chunk().disassemble_instruction(self.pc);
+    }
+
+    fn chunk(&self) -> &Chunk {
+        match &self.ty {
+            FrameType::Function(func) => func.chunk.borrow(),
+            FrameType::Script(chunk) => chunk,
+        }
+    }
+
+    fn get_one<T: Copy>(&mut self) -> T {
+        let one = self.chunk().get_one(self.pc);
+        self.pc += 1;
+        return one;
+    }
+
+    fn get_constant(&mut self) -> Value {
+        let constant = self.chunk().get_constant(self.pc);
+        self.pc += 1;
+        return constant;
+    }
+
+    fn jump(&mut self, delta: usize, backward: bool) {
+        if backward {
+            self.pc -= delta;
+        } else {
+            self.pc += delta;
+        }
+    }
+
+    fn is_function(&self) -> bool {
+        match self.ty {
+            FrameType::Function(_) => true,
+            FrameType::Script(_) => false,
+        }
+    }
+}
+
+const FRAMES_MAX: usize = 64;
+const STACK_MAX: usize = u8::MAX as usize * FRAMES_MAX;
+
 pub struct VM {
-    chunk: Chunk,
-    pc: usize,
     stack: [Value; STACK_MAX],
     stack_top_offset: usize,
+
+    frames: [Option<CallFrame>; FRAMES_MAX],
+    frame_count: usize,
+
     heap: Heap,
     globals: Table,
 }
@@ -109,24 +172,40 @@ pub fn interpret(source: &str) -> InterpretResult {
 
 impl VM {
     pub fn new(chunk: Chunk, heap: Heap) -> Self {
-        return Self {
-            chunk: chunk,
-            pc: 0,
+        let mut this = Self {
             stack: [const { Value::NIL }; STACK_MAX],
             stack_top_offset: 0,
             heap,
             globals: Table::new(),
+            frames: [const { None }; FRAMES_MAX],
+            frame_count: 0,
         };
+
+        let first_frame = CallFrame::new(FrameType::Script(chunk), this.stack_top_offset);
+        this.frames[0] = Some(first_frame);
+        this.frame_count = 1;
+        return this;
     }
 
-    fn debug_trace_execution(&self) {
+    fn add_frame(&mut self, func: Rc<ObjFunction>) {
+        let frame_stack_offset = self.stack_top_offset - func.arity;
+        let frame = CallFrame::new(FrameType::Function(func), frame_stack_offset);
+        self.frames[self.frame_count] = Some(frame);
+        self.frame_count += 1;
+    }
+
+    fn current_frame(&mut self) -> &mut CallFrame {
+        return self.frames[self.frame_count - 1].as_mut().unwrap();
+    }
+
+    fn debug_trace_execution(&mut self) {
         print!("          ");
         for offset in 0..self.stack_top_offset {
             let value = &self.stack[offset];
             print!("[ {} ]", value)
         }
-        println!("");
-        self.chunk.disassemble_instruction(self.pc);
+        println!();
+        self.current_frame().disassemble_instruction();
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -161,6 +240,11 @@ impl VM {
                     self.push(Value::BOOL(lhs == rhs));
                 }
                 OpReturn => {
+                    // check if there are out
+                    if self.current_frame().is_function() {
+                        self.frame_count -= 1;
+                        continue;
+                    }
                     return InterpretResult::InterpretOk;
                 }
                 OpNot => {
@@ -214,27 +298,48 @@ impl VM {
                 }
                 OpGetLocal => {
                     let slot: u8 = self.read_byte();
-                    let value = self.stack[slot as usize].clone();
+                    let slot = self.current_frame().stack_offset + slot as usize;
+                    let value = self.stack[slot].clone();
                     self.push(value);
                 }
                 OpSetLocal => {
                     let slot: u8 = self.read_byte();
-                    self.stack[slot as usize] = self.peek(0);
+                    let slot = self.current_frame().stack_offset + slot as usize;
+                    self.stack[slot] = self.peek(0);
                 }
                 OpJumpIfFalse => {
                     let condition = self.peek(0);
                     let delta = self.read_short();
                     if !condition.cast_truthy() {
-                        self.jump(delta, false);
+                        self.current_frame().jump(delta, false);
                     }
                 }
                 OpJump => {
                     let delta = self.read_short();
-                    self.jump(delta, false);
+                    self.current_frame().jump(delta, false);
                 }
                 OpLoop => {
                     let delta = self.read_short();
-                    self.jump(delta, true);
+                    self.current_frame().jump(delta, true);
+                }
+                OpCall => {
+                    let arg_count: u8 = self.read_byte();
+                    let function = self.peek(arg_count).cast_obj_function();
+                    if function.arity != arg_count as usize {
+                        return self.runtime_error(
+                            format!(
+                                "Expected {} arguments but got {}.",
+                                function.arity, arg_count
+                            )
+                            .as_str(),
+                        );
+                    }
+
+                    if self.frame_count == FRAMES_MAX {
+                        return self.runtime_error("Stack overflow");
+                    }
+
+                    self.add_frame(function);
                 }
             }
         }
@@ -275,19 +380,21 @@ impl VM {
     }
 
     fn read_byte<T: Copy>(&mut self) -> T {
-        let one = self.chunk.get_one::<T>(self.pc);
-        self.pc += 1;
-        return one;
+        return self.current_frame().get_one();
     }
 
     fn read_constant(&mut self) -> Value {
-        let constant = self.chunk.get_constant(self.pc);
-        self.pc += 1;
-        return constant;
+        return self.current_frame().get_constant();
     }
 
     fn read_string(&mut self) -> Rc<ObjString> {
         return self.read_constant().cast_obj_string();
+    }
+
+    fn read_short(&mut self) -> usize {
+        let b1: u8 = self.read_byte();
+        let b2: u8 = self.read_byte();
+        return ((b1 as usize) << 8) | (b2 as usize);
     }
 
     fn push(&mut self, value: Value) {
@@ -307,23 +414,10 @@ impl VM {
 
     fn runtime_error(&self, msg: &str) -> InterpretResult {
         eprintln!("{}", msg);
-        let current_line = self.chunk.get_line(self.pc - 1);
-        eprintln!("[line {current_line}] in script");
+
+        // let current_line = self.curr.get_line(self.pc - 1);
+        // eprintln!("[line {current_line}] in script");
         return InterpretRuntimeError;
-    }
-
-    fn jump(&mut self, delta: usize, backward: bool) {
-        if backward {
-            self.pc -= delta;
-        } else {
-            self.pc += delta;
-        }
-    }
-
-    fn read_short(&mut self) -> usize {
-        let b1: u8 = self.read_byte();
-        let b2: u8 = self.read_byte();
-        return ((b1 as usize) << 8) | (b2 as usize);
     }
 }
 
@@ -336,11 +430,12 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            fun areWeHavingItYet() {
-                print "Yes we are!";
+            fun a(b,c,d) {
+                print b + c + d;
               }
               
-              print areWeHavingItYet;
+              print 4 + a(1,2,3);
+              print("done !!!");
         "#,
         );
     }

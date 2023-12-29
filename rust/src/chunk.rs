@@ -1,5 +1,5 @@
 use crate::{
-    object::{Obj, ObjString, ObjType},
+    object::{Obj, ObjFunction, ObjString, ObjType},
     op::OpCode,
 };
 use std::{
@@ -133,7 +133,17 @@ impl Value {
             }
         }
 
-        panic!("expected to be a string");
+        panic!("expected to be a ObjString");
+    }
+
+    pub fn cast_obj_function(&self) -> Rc<ObjFunction> {
+        if let Value::OBJ(obj) = self {
+            if let ObjType::ObjFunction(inner) = &obj.ty {
+                return inner.clone();
+            }
+        }
+
+        panic!("expected to be a ObjFunction");
     }
 }
 
@@ -243,6 +253,7 @@ impl Chunk {
             OpCode::OpJumpIfFalse => self.jump_instruction("OP_JUMP_IF_FALSE", 1, offset),
             OpCode::OpJump => self.jump_instruction("OP_JUMP", 1, offset),
             OpCode::OpLoop => self.jump_instruction("OP_LOOP", -1, offset),
+            OpCode::OpCall => self.byte_instruction("OP_CALL", offset),
         };
 
         return offset + delta;
