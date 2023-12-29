@@ -806,6 +806,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             self.consume(TokenLeftBrace, "Expect '{' before function body.");
             self.block();
 
+            self.emit_byte(OpNil);
             self.emit_byte(OpReturn); // in case user doesn't specify one
             let func = self.compiler.end_parse_function(func_arity);
             let func = self.heap.allocate_function(func);

@@ -451,11 +451,7 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            fun f() {
-                return;
-                print "bad";
-              }
-              
+            fun f() {}
             print f(); // expect: nil
         "#,
         );
