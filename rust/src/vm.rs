@@ -449,7 +449,9 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            nil(); // expect runtime error: Can only call functions and classes.
+            // [line 3] Error: Unexpected character.
+            // [java line 3] Error at 'b': Expect ')' after arguments.
+            foo(a | b);
         "#,
         );
     }

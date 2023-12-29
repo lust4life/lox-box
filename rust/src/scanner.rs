@@ -131,7 +131,7 @@ impl<'code: 'tk, 'tk> Scanner<'code> {
                 b"\"" => self.handle_string(),
                 one if is_digital(one) => self.handle_number(),
                 one if is_alpha(one) => self.handle_keywords_and_identifier(),
-                _ => self.token(TokenError),
+                _ => self.error_token("Unexpected character."),
             };
 
             self.advance();
