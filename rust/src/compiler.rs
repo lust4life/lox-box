@@ -815,7 +815,9 @@ impl<'code, 'tk> Parser<'code, 'tk> {
             self.emit_byte(OpReturn); // in case user doesn't specify one
             let func = self.compiler.end_parse_function(func_arity);
             let func = self.heap.allocate_function(func);
-            self.emit_constant(&func_name_tk, func);
+
+            let func_idx = self.make_constant(func, &func_name_tk);
+            self.emit_bytes(OpClosure, func_idx);
 
             self.define_variable(idx);
         }
@@ -938,25 +940,5 @@ pub fn compile(source: &str, heap: &mut Heap) -> Option<Chunk> {
 mod tests {
 
     #[test]
-    fn tdd() {
-        #[derive(Debug)]
-        struct A {
-            enclosing: Option<Box<A>>,
-        }
-
-        impl A {
-            fn enclose(&mut self) {
-                let prev_compiler = std::mem::replace(self, A { enclosing: None });
-                *self = A {
-                    enclosing: Some(Box::new(prev_compiler)),
-                };
-            }
-        }
-        let mut a = A { enclosing: None };
-        dbg!(&a);
-        a.enclose();
-        dbg!(&a);
-        a.enclose();
-        dbg!(&a);
-    }
+    fn tdd() {}
 }

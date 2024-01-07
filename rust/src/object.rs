@@ -71,10 +71,16 @@ impl Debug for ObjFunction {
 pub type ObjNative = fn(args: &[Value]) -> Value;
 
 #[derive(Debug, PartialEq)]
+pub struct ObjClosure {
+    pub function: Rc<ObjFunction>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ObjType {
     ObjString(Rc<ObjString>),
     ObjFunction(Rc<ObjFunction>),
     ObjNative(ObjNative),
+    ObjClosure(Rc<ObjClosure>),
 }
 
 #[derive(Debug)]
@@ -95,6 +101,7 @@ impl Display for Obj {
             ObjType::ObjString(inner) => f.write_str(&inner.chars),
             ObjType::ObjFunction(inner) => write!(f, "<fn {}>", inner.name.chars),
             ObjType::ObjNative(_) => f.write_str("<native fn>"),
+            ObjType::ObjClosure(closure) => write!(f, "<fn {}>", closure.function.name.chars),
         }
     }
 }

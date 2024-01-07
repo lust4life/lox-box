@@ -1,5 +1,5 @@
 use crate::{
-    object::{Obj, ObjFunction, ObjNative, ObjString, ObjType},
+    object::{Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType},
     op::OpCode,
 };
 use std::{
@@ -145,6 +145,15 @@ impl Value {
         return None;
     }
 
+    pub fn as_obj_closure(&self) -> Option<Rc<ObjClosure>> {
+        if let Value::OBJ(obj) = self {
+            if let ObjType::ObjClosure(inner) = &obj.ty {
+                return Some(inner.clone());
+            }
+        }
+        return None;
+    }
+
     pub fn as_obj_native(&self) -> Option<ObjNative> {
         if let Value::OBJ(obj) = self {
             if let ObjType::ObjNative(inner) = obj.ty {
@@ -262,6 +271,15 @@ impl Chunk {
             OpCode::OpJump => self.jump_instruction("OP_JUMP", 1, offset),
             OpCode::OpLoop => self.jump_instruction("OP_LOOP", -1, offset),
             OpCode::OpCall => self.byte_instruction("OP_CALL", offset),
+            OpCode::OpClosure => {
+                let constant_idx = self.code[offset + 1];
+                let constant_value = &self.contants[constant_idx as usize];
+                println!(
+                    "{:-16} {constant_idx:4} '{constant_value:.2}'",
+                    "OP_CLOSURE"
+                );
+                1
+            }
         };
 
         return offset + delta;

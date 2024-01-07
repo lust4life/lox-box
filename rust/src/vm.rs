@@ -1,9 +1,9 @@
-use std::{borrow::Borrow, ops::FromResidual, process::ExitCode, rc::Rc, time::SystemTime};
+use std::{borrow::Borrow, ops::FromResidual, process::ExitCode, rc::Rc};
 
 use crate::{
     chunk::{Chunk, Value},
     compiler::{self},
-    object::{Obj, ObjFunction, ObjNative, ObjString, ObjType},
+    object::{Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType},
     op::OpCode::{self, *},
     table::Table,
 };
@@ -82,10 +82,14 @@ impl Heap {
         let v = self.allocate(ObjType::ObjFunction(Rc::new(func)));
         return v;
     }
+
+    fn allocate_closure(&mut self, func: Rc<ObjFunction>) -> Value {
+        return self.allocate(ObjType::ObjClosure(Rc::new(ObjClosure { function: func })));
+    }
 }
 
 enum FrameType {
-    Function(Rc<ObjFunction>),
+    Function(Rc<ObjClosure>),
     Script(Chunk),
 }
 
@@ -111,7 +115,7 @@ impl CallFrame {
 
     fn chunk(&self) -> &Chunk {
         match &self.ty {
-            FrameType::Function(func) => func.chunk.borrow(),
+            FrameType::Function(closure) => closure.function.chunk.borrow(),
             FrameType::Script(chunk) => chunk,
         }
     }
@@ -199,9 +203,9 @@ impl VM {
         self.globals.set(key, native_func, false);
     }
 
-    fn add_frame(&mut self, func: Rc<ObjFunction>) {
-        let frame_stack_offset = self.stack_count - func.arity;
-        let frame = CallFrame::new(FrameType::Function(func), frame_stack_offset);
+    fn add_frame(&mut self, closure: Rc<ObjClosure>) {
+        let frame_stack_offset = self.stack_count - closure.function.arity;
+        let frame = CallFrame::new(FrameType::Function(closure), frame_stack_offset);
         self.frames[self.frame_count] = Some(frame);
         self.frame_count += 1;
     }
@@ -344,12 +348,12 @@ impl VM {
                 }
                 OpCall => {
                     let arg_count: u8 = self.read_byte();
-                    if let Some(function) = self.peek(arg_count).as_obj_function() {
-                        if function.arity != arg_count as usize {
+                    if let Some(closure) = self.peek(arg_count).as_obj_closure() {
+                        if closure.function.arity != arg_count as usize {
                             return self.runtime_error(
                                 format!(
                                     "Expected {} arguments but got {}.",
-                                    function.arity, arg_count
+                                    closure.function.arity, arg_count
                                 )
                                 .as_str(),
                             );
@@ -359,7 +363,7 @@ impl VM {
                             return self.runtime_error("Stack overflow.");
                         }
 
-                        self.add_frame(function);
+                        self.add_frame(closure);
                     } else if let Some(native) = self.peek(arg_count).as_obj_native() {
                         let stack_before_arg = self.stack_count - arg_count as usize;
                         let arges = &self.stack[stack_before_arg..self.stack_count];
@@ -369,6 +373,11 @@ impl VM {
                     } else {
                         return self.runtime_error("Can only call functions and classes.");
                     }
+                }
+                OpClosure => {
+                    let func = self.read_constant().as_obj_function().unwrap();
+                    let closure = self.heap.allocate_closure(func);
+                    self.push(closure);
                 }
             }
         }
@@ -396,7 +405,7 @@ impl VM {
             (OBJ(lhs), OBJ(rhs)) => match (&lhs.ty, &rhs.ty) {
                 (ObjType::ObjString(lhs), ObjType::ObjString(rhs)) => {
                     let concated = lhs.chars.clone() + &rhs.chars;
-                    let res = self.heap.allocate_string(concated.as_str());
+                    let res: Value = self.heap.allocate_string(concated.as_str());
                     return Ok(res);
                 }
                 _ => return Err("Operands must be two numbers or two strings.".to_owned()),
@@ -447,7 +456,7 @@ impl VM {
         for i in (0..self.frame_count).rev() {
             let frame = self.frames[i].as_ref().unwrap();
             let name = match &frame.ty {
-                FrameType::Function(func) => format!("{}()", func.name.chars),
+                FrameType::Function(closure) => format!("{}()", closure.function.name.chars),
                 FrameType::Script(_) => "script".to_owned(),
             };
             let current_line = self.current_frame().get_line();
