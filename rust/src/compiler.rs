@@ -86,7 +86,7 @@ impl<'tk> Compiler<'tk> {
         self.locals[self.local_count - 1].as_mut().unwrap().scope = self.current_scope;
     }
 
-    fn resolve_local(&mut self, tk: &Token) -> Result<Option<u8>, String> {
+    fn resolve_local(&self, tk: &Token) -> Result<Option<u8>, String> {
         for idx in (0..self.local_count).rev() {
             let local = self.locals[idx].as_ref().unwrap();
             if local.name == tk.lexeme {
@@ -98,6 +98,10 @@ impl<'tk> Compiler<'tk> {
         }
 
         return Ok(None);
+    }
+
+    fn resolve_upvalue(&self, tk: &Token) -> Option<u8> {
+        todo!()
     }
 
     fn declare_local(&mut self, tk: &Token<'tk>) -> Result<(), String> {
@@ -682,9 +686,15 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 set_op = OpSetLocal;
             }
             Ok(None) => {
-                idx = self.identifier_constant(tk);
-                get_op = OpGetGlobal;
-                set_op = OpSetGlobal;
+                if let Some(upvalue_idx) = self.compiler.resolve_upvalue(tk) {
+                    idx = upvalue_idx;
+                    get_op = OpGetUpvalue;
+                    set_op = OpSetUpvalue;
+                } else {
+                    idx = self.identifier_constant(tk);
+                    get_op = OpGetGlobal;
+                    set_op = OpSetGlobal;
+                }
             }
             Err(ref msg) => {
                 self.error_at(tk, msg);

@@ -280,6 +280,8 @@ impl Chunk {
                 );
                 1
             }
+            OpCode::OpGetUpvalue => self.byte_instruction("OP_GET_UPVALUE", offset),
+            OpCode::OpSetUpvalue => self.byte_instruction("OP_SET_UPVALUE", offset),
         };
 
         return offset + delta;

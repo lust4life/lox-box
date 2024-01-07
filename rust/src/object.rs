@@ -1,10 +1,11 @@
 use std::{
+    cell::RefCell,
     fmt::{Debug, Display},
     ptr,
     rc::Rc,
 };
 
-use crate::chunk::{Chunk, Value};
+use crate::chunk::{Chunk, Value, Vec};
 
 #[derive(Debug, Clone)]
 pub struct ObjString {
@@ -41,6 +42,7 @@ pub struct ObjFunction {
     pub chunk: Chunk,
     pub name: Rc<ObjString>,
     pub arity: usize,
+    pub upvalue_count: usize,
 }
 
 impl ObjFunction {
@@ -49,6 +51,7 @@ impl ObjFunction {
             chunk: Chunk::new(),
             name,
             arity: 0,
+            upvalue_count: 0,
         }
     }
 }
@@ -70,9 +73,35 @@ impl Debug for ObjFunction {
 
 pub type ObjNative = fn(args: &[Value]) -> Value;
 
-#[derive(Debug, PartialEq)]
+pub type ObjUpvalue = Rc<RefCell<Value>>;
 pub struct ObjClosure {
     pub function: Rc<ObjFunction>,
+    pub upvalues: Vec<ObjUpvalue>,
+}
+
+impl ObjClosure {
+    pub fn new(function: Rc<ObjFunction>) -> Self {
+        let upvalue_count = function.upvalue_count;
+        Self {
+            function,
+            upvalues: Vec::with_capacity(upvalue_count),
+        }
+    }
+}
+
+impl PartialEq for ObjClosure {
+    fn eq(&self, other: &Self) -> bool {
+        return ptr::eq(self, other);
+    }
+}
+
+impl Debug for ObjClosure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ObjClosure")
+            .field("function", &self.function)
+            .field("upvalues.count", &self.upvalues.count)
+            .finish()
+    }
 }
 
 #[derive(Debug, PartialEq)]

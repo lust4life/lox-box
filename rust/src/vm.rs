@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, ops::FromResidual, process::ExitCode, rc::Rc};
+use std::{ops::FromResidual, process::ExitCode, rc::Rc};
 
 use crate::{
     chunk::{Chunk, Value},
@@ -84,13 +84,22 @@ impl Heap {
     }
 
     fn allocate_closure(&mut self, func: Rc<ObjFunction>) -> Value {
-        return self.allocate(ObjType::ObjClosure(Rc::new(ObjClosure { function: func })));
+        return self.allocate(ObjType::ObjClosure(Rc::new(ObjClosure::new(func))));
     }
 }
 
 enum FrameType {
     Function(Rc<ObjClosure>),
     Script(Chunk),
+}
+
+impl FrameType {
+    pub fn cast_closure(&self) -> Rc<ObjClosure> {
+        match self {
+            FrameType::Function(closure) => closure.clone(),
+            FrameType::Script(_) => todo!(),
+        }
+    }
 }
 
 struct CallFrame {
@@ -115,7 +124,7 @@ impl CallFrame {
 
     fn chunk(&self) -> &Chunk {
         match &self.ty {
-            FrameType::Function(closure) => closure.function.chunk.borrow(),
+            FrameType::Function(closure) => &closure.function.chunk,
             FrameType::Script(chunk) => chunk,
         }
     }
@@ -149,6 +158,14 @@ impl CallFrame {
 
     fn get_line(&self) -> usize {
         return self.chunk().get_line(self.pc - 1);
+    }
+
+    fn get_upvalue(&self, idx: usize) -> Value {
+        return self.ty.cast_closure().upvalues[idx].borrow().clone();
+    }
+
+    fn set_upvalue(&self, idx: usize, value: Value) {
+        *self.ty.cast_closure().upvalues[idx].borrow_mut() = value;
     }
 }
 
@@ -258,7 +275,6 @@ impl VM {
                 OpReturn => {
                     let v = self.pop();
 
-                    // check if there are out
                     if self.current_frame().is_function() {
                         self.stack_count = self.current_frame().stack_offset;
 
@@ -377,7 +393,19 @@ impl VM {
                 OpClosure => {
                     let func = self.read_constant().as_obj_function().unwrap();
                     let closure = self.heap.allocate_closure(func);
+                    let closure_obj = closure.as_obj_closure().unwrap();
                     self.push(closure);
+                    // setup upvalues
+                }
+                OpGetUpvalue => {
+                    let idx: u8 = self.read_byte();
+                    let upvalue = self.current_frame().get_upvalue(idx as _);
+                    self.push(upvalue);
+                }
+                OpSetUpvalue => {
+                    let idx: u8 = self.read_byte();
+                    let value = self.peek(0);
+                    self.current_frame().set_upvalue(idx as _, value);
                 }
             }
         }
