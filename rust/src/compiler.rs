@@ -145,6 +145,10 @@ impl<'tk> Compiler<'tk> {
 
         if let Some(functx) = &mut self.functx {
             if let Some(enclosing_local_idx) = functx.enclosing.resolve_local(tk)? {
+                functx.enclosing.locals[enclosing_local_idx as usize]
+                    .as_mut()
+                    .unwrap()
+                    .is_captured = true;
                 let idx = functx.add_upvalue(Upvalue::Local(enclosing_local_idx))?;
                 upvalue_idx = Some(idx);
             } else if let Some(enclosing_upvalue_idx) = functx.enclosing.resolve_upvalue(tk)? {
@@ -179,6 +183,7 @@ impl<'tk> Compiler<'tk> {
         self.locals[self.local_count] = Some(Local {
             name: name,
             scope: -1,
+            is_captured: false,
         });
         self.local_count += 1;
     }
@@ -193,18 +198,26 @@ impl<'tk> Compiler<'tk> {
             .map(|x| x.as_ref().unwrap())
     }
 
-    fn end_scope(&mut self) -> usize {
-        let before = self.local_count;
-        for local in self.from_end(&self.locals) {
-            if local.scope >= self.current_scope {
-                self.local_count -= 1;
-            } else {
-                break;
-            }
-        }
+    fn end_scope<'locals>(&mut self) -> Vec<OpCode> {
+        let ops = self
+            .from_end(&self.locals)
+            .map_while(|local| {
+                if local.scope >= self.current_scope {
+                    let op = if local.is_captured {
+                        OpCloseUpvalue
+                    } else {
+                        OpPop
+                    };
+                    return Some(op);
+                } else {
+                    return None;
+                }
+            })
+            .collect::<Vec<OpCode>>();
 
+        self.local_count -= ops.len();
         self.current_scope -= 1;
-        return before - self.local_count;
+        return ops;
     }
 
     fn begin_parse_function(&mut self, name: Rc<ObjString>) {
@@ -231,6 +244,7 @@ impl<'tk> Compiler<'tk> {
 struct Local<'tk> {
     name: &'tk str,
     scope: i8,
+    is_captured: bool,
 }
 
 type ParseFun<'code, 'tk> = fn(&mut Parser<'code, 'tk>);
@@ -793,9 +807,8 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     }
 
     fn end_scope(&mut self) {
-        let pop_count = self.compiler.end_scope();
-        for _ in 0..pop_count {
-            self.emit_byte(OpPop);
+        for ops in self.compiler.end_scope() {
+            self.emit_byte(ops);
         }
     }
 
@@ -849,6 +862,10 @@ impl<'code, 'tk> Parser<'code, 'tk> {
         let matched = self.match_and_advance(TokenFun);
         if matched {
             let idx = self.parse_variable("Expect function name.");
+            if idx.is_none() {
+                self.compiler.mark_local_initialized();
+            }
+
             let func_name_tk = self.current.clone();
             let func_name = self
                 .heap

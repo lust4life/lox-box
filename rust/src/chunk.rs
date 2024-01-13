@@ -6,7 +6,7 @@ use std::{
     alloc,
     alloc::Layout,
     fmt::Display,
-    ops::{Deref, Neg},
+    ops::{Deref, DerefMut, Neg},
     ptr,
     rc::Rc,
 };
@@ -30,6 +30,12 @@ impl<T> Deref for Vec<T> {
     type Target = [T];
     fn deref(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self.ptr, self.count) }
+    }
+}
+
+impl<T> DerefMut for Vec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.count) }
     }
 }
 
@@ -57,7 +63,7 @@ impl<T> Vec<T> {
         }
     }
 
-    fn push(&mut self, item: T) {
+    pub fn push(&mut self, item: T) {
         if self.capacity <= self.count {
             self.grow_array();
         }
@@ -274,14 +280,24 @@ impl Chunk {
             OpCode::OpClosure => {
                 let constant_idx = self.code[offset + 1];
                 let constant_value = &self.contants[constant_idx as usize];
-                println!(
-                    "{:-16} {constant_idx:4} '{constant_value:.2}'",
-                    "OP_CLOSURE"
-                );
-                1
+                println!("{:-16} {constant_idx:4} {constant_value}", "OP_CLOSURE");
+
+                let func = constant_value.as_obj_function().unwrap();
+                for i in 0..func.upvalue_count {
+                    let index = self.code[offset + 1 + (2 * i + 1)];
+                    let is_local = self.code[offset + 1 + (i + 1) * 2];
+                    let local_info = if is_local == 1 { "local" } else { "upvalue" };
+                    println!(
+                        "{:04}      |                     {local_info} {index}",
+                        offset + (i + 1) * 2
+                    )
+                }
+
+                1 + func.upvalue_count * 2
             }
             OpCode::OpGetUpvalue => self.byte_instruction("OP_GET_UPVALUE", offset),
             OpCode::OpSetUpvalue => self.byte_instruction("OP_SET_UPVALUE", offset),
+            OpCode::OpCloseUpvalue => simple_instruction("OP_CLOSURE_UPVALUE"),
         };
 
         return offset + delta;

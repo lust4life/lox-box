@@ -1,9 +1,11 @@
-use std::{ops::FromResidual, process::ExitCode, rc::Rc};
+use std::{cell::RefCell, ops::FromResidual, process::ExitCode, rc::Rc};
 
 use crate::{
-    chunk::{Chunk, Value},
+    chunk::{Chunk, Value, Vec},
     compiler::{self},
-    object::{Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType},
+    object::{
+        Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType, ObjUpvalue, OpenUpvaule,
+    },
     op::OpCode::{self, *},
     table::Table,
 };
@@ -83,8 +85,11 @@ impl Heap {
         return v;
     }
 
-    fn allocate_closure(&mut self, func: Rc<ObjFunction>) -> Value {
-        return self.allocate(ObjType::ObjClosure(Rc::new(ObjClosure::new(func))));
+    fn allocate_closure(&mut self, func: Rc<ObjFunction>, upvalues: Vec<ObjUpvalue>) -> Value {
+        return self.allocate(ObjType::ObjClosure(Rc::new(ObjClosure {
+            function: func,
+            upvalues,
+        })));
     }
 }
 
@@ -107,6 +112,7 @@ struct CallFrame {
     pc: usize,
 
     stack_offset: usize,
+    open_upvalues: Option<Rc<RefCell<OpenUpvaule>>>,
 }
 
 impl CallFrame {
@@ -115,6 +121,7 @@ impl CallFrame {
             ty,
             pc: 0,
             stack_offset,
+            open_upvalues: None,
         }
     }
 
@@ -160,8 +167,45 @@ impl CallFrame {
         return self.chunk().get_line(self.pc - 1);
     }
 
-    fn get_upvalue(&self, idx: usize) -> Value {
-        return self.ty.cast_closure().upvalues[idx].borrow().clone();
+    fn capture_upvalue(&mut self, idx: usize, value: Value) -> ObjUpvalue {
+        // capture it on the callframe's open_upvalues
+
+        let mut previous: Option<Rc<RefCell<OpenUpvaule>>> = None;
+        let mut looped_open_upvalue = self.open_upvalues.clone();
+        while let Some(inner) = looped_open_upvalue.clone() {
+            let inner = inner.borrow();
+            if inner.idx == idx {
+                return inner.upvalue.clone();
+            }
+
+            if inner.idx < idx {
+                break;
+            }
+
+            previous = looped_open_upvalue;
+            looped_open_upvalue = inner.next.clone();
+        }
+
+        let open_upvalue = Rc::new(RefCell::new(OpenUpvaule::new(
+            idx,
+            value,
+            looped_open_upvalue,
+        )));
+        let created_upvalue = open_upvalue.borrow().upvalue.clone();
+        match previous {
+            Some(previous) => {
+                previous.borrow_mut().next = Some(open_upvalue);
+            }
+            None => {
+                self.open_upvalues = Some(open_upvalue);
+            }
+        }
+
+        return created_upvalue;
+    }
+
+    fn get_upvalue(&mut self, idx: usize) -> ObjUpvalue {
+        return self.ty.cast_closure().upvalues[idx].clone();
     }
 
     fn set_upvalue(&self, idx: usize, value: Value) {
@@ -278,6 +322,8 @@ impl VM {
                     if self.current_frame().is_function() {
                         self.stack_count = self.current_frame().stack_offset;
 
+                        self.close_upvalues();
+
                         self.pop(); // pop the fn itself
 
                         self.frame_count -= 1; // return to the upper frame
@@ -392,25 +438,36 @@ impl VM {
                 }
                 OpClosure => {
                     let func = self.read_constant().as_obj_function().unwrap();
-                    let upvalue_count = func.upvalue_count;
-                    let closure = self.heap.allocate_closure(func);
-                    let closure_obj = closure.as_obj_closure().unwrap();
-                    self.push(closure);
-                    // setup upvalues
-                    for upvalue_idx in 0..upvalue_count {
-                        let idx = self.read_byte();
+                    let mut upvalues = Vec::<ObjUpvalue>::with_capacity(func.upvalue_count);
+
+                    for _ in 0..func.upvalue_count {
+                        let upvalue_idx = self.read_byte() as usize;
                         let is_local = self.read_byte();
+                        let upvalue = if is_local == 1 {
+                            let v =
+                                self.stack[self.current_frame().stack_offset + upvalue_idx].clone();
+                            self.current_frame().capture_upvalue(upvalue_idx, v)
+                        } else {
+                            self.current_frame().get_upvalue(upvalue_idx)
+                        };
+                        upvalues.push(upvalue);
                     }
+                    let closure = self.heap.allocate_closure(func, upvalues);
+                    self.push(closure);
                 }
                 OpGetUpvalue => {
                     let idx = self.read_byte();
-                    let upvalue = self.current_frame().get_upvalue(idx as _);
+                    let upvalue = self.current_frame().get_upvalue(idx as _).borrow().clone();
                     self.push(upvalue);
                 }
                 OpSetUpvalue => {
                     let idx = self.read_byte();
                     let value = self.peek(0);
                     self.current_frame().set_upvalue(idx as _, value);
+                }
+                OpCloseUpvalue => {
+                    self.close_upvalues();
+                    self.pop();
                 }
             }
         }
@@ -499,6 +556,20 @@ impl VM {
 
         return InterpretRuntimeError;
     }
+
+    fn close_upvalues(&mut self) {
+        let stack_baseline = self.current_frame().stack_offset;
+        while let Some(inner) = self.current_frame().open_upvalues.clone() {
+            let inner = inner.borrow();
+            let upvalue_stack_idx = stack_baseline + inner.idx;
+            if upvalue_stack_idx < self.stack_count - 1 {
+                break;
+            }
+
+            *inner.upvalue.borrow_mut() = self.stack[upvalue_stack_idx].clone();
+            self.current_frame().open_upvalues = inner.next.clone();
+        }
+    }
 }
 
 #[cfg(test)]
@@ -510,8 +581,33 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            var start = clock();
-            print clock() - start;
+            var f;
+            var g;
+            
+            {
+              var local = "local";
+              fun f_() {
+                print local;
+                local = "after f";
+                print local;
+              }
+              f = f_;
+            
+              fun g_() {
+                print local;
+                local = "after g";
+                print local;
+              }
+              g = g_;
+            }
+            
+            f();
+            // expect: local
+            // expect: after f
+            
+            g();
+            // expect: after f
+            // expect: after g            
         "#,
         );
     }

@@ -29,6 +29,7 @@ pub enum OpCode {
     OpClosure,
     OpGetUpvalue,
     OpSetUpvalue,
+    OpCloseUpvalue,
 }
 
 impl From<u8> for OpCode {

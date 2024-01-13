@@ -73,20 +73,27 @@ impl Debug for ObjFunction {
 
 pub type ObjNative = fn(args: &[Value]) -> Value;
 
+pub struct OpenUpvaule {
+    pub idx: usize,
+    pub upvalue: ObjUpvalue,
+    pub next: Option<Rc<RefCell<OpenUpvaule>>>,
+}
+
+impl OpenUpvaule {
+    pub fn new(idx: usize, value: Value, next: Option<Rc<RefCell<OpenUpvaule>>>) -> Self {
+        Self {
+            idx,
+            upvalue: Rc::new(RefCell::new(value)),
+            next,
+        }
+    }
+}
+
 pub type ObjUpvalue = Rc<RefCell<Value>>;
+
 pub struct ObjClosure {
     pub function: Rc<ObjFunction>,
     pub upvalues: Vec<ObjUpvalue>,
-}
-
-impl ObjClosure {
-    pub fn new(function: Rc<ObjFunction>) -> Self {
-        let upvalue_count = function.upvalue_count;
-        Self {
-            function,
-            upvalues: Vec::with_capacity(upvalue_count),
-        }
-    }
 }
 
 impl PartialEq for ObjClosure {
