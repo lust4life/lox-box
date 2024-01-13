@@ -1,7 +1,7 @@
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OpCode {
-    OpReturn,
+    OpReturn = 0,
     OpConstant,
     OpAdd,
     OpSubtract,
@@ -29,6 +29,12 @@ pub enum OpCode {
     OpClosure,
     OpGetUpvalue,
     OpSetUpvalue,
+}
+
+impl From<u8> for OpCode {
+    fn from(value: u8) -> Self {
+        unsafe { std::mem::transmute(value) }
+    }
 }
 
 impl Into<u8> for OpCode {

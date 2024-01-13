@@ -246,7 +246,7 @@ impl VM {
             if cfg!(test) {
                 self.debug_trace_execution();
             }
-            let instruction = self.read_byte::<OpCode>();
+            let instruction = OpCode::from(self.read_byte());
             match instruction {
                 OpConstant => {
                     let constant = self.read_constant();
@@ -337,13 +337,13 @@ impl VM {
                     }
                 }
                 OpGetLocal => {
-                    let slot: u8 = self.read_byte();
+                    let slot = self.read_byte();
                     let slot = self.current_frame().stack_offset + slot as usize;
                     let value = self.stack[slot].clone();
                     self.push(value);
                 }
                 OpSetLocal => {
-                    let slot: u8 = self.read_byte();
+                    let slot = self.read_byte();
                     let slot = self.current_frame().stack_offset + slot as usize;
                     self.stack[slot] = self.peek(0);
                 }
@@ -363,7 +363,7 @@ impl VM {
                     self.current_frame().jump(delta, true);
                 }
                 OpCall => {
-                    let arg_count: u8 = self.read_byte();
+                    let arg_count = self.read_byte();
                     if let Some(closure) = self.peek(arg_count).as_obj_closure() {
                         if closure.function.arity != arg_count as usize {
                             return self.runtime_error(
@@ -392,18 +392,23 @@ impl VM {
                 }
                 OpClosure => {
                     let func = self.read_constant().as_obj_function().unwrap();
+                    let upvalue_count = func.upvalue_count;
                     let closure = self.heap.allocate_closure(func);
                     let closure_obj = closure.as_obj_closure().unwrap();
                     self.push(closure);
                     // setup upvalues
+                    for upvalue_idx in 0..upvalue_count {
+                        let idx = self.read_byte();
+                        let is_local = self.read_byte();
+                    }
                 }
                 OpGetUpvalue => {
-                    let idx: u8 = self.read_byte();
+                    let idx = self.read_byte();
                     let upvalue = self.current_frame().get_upvalue(idx as _);
                     self.push(upvalue);
                 }
                 OpSetUpvalue => {
-                    let idx: u8 = self.read_byte();
+                    let idx = self.read_byte();
                     let value = self.peek(0);
                     self.current_frame().set_upvalue(idx as _, value);
                 }
@@ -445,7 +450,7 @@ impl VM {
         }
     }
 
-    fn read_byte<T: Copy>(&mut self) -> T {
+    fn read_byte(&mut self) -> u8 {
         return self.current_frame().get_one();
     }
 
@@ -458,8 +463,8 @@ impl VM {
     }
 
     fn read_short(&mut self) -> usize {
-        let b1: u8 = self.read_byte();
-        let b2: u8 = self.read_byte();
+        let b1 = self.read_byte();
+        let b2 = self.read_byte();
         return ((b1 as usize) << 8) | (b2 as usize);
     }
 
