@@ -50,32 +50,72 @@ impl Precedence {
 
 use Precedence::*;
 
+#[derive(PartialEq)]
+enum Upvalue {
+    Local(u8),
+    NonLocal(u8),
+}
+
+struct FunctionCtx<'tk> {
+    function: ObjFunction,
+    enclosing: Box<Compiler<'tk>>,
+    upvalues: [Option<Upvalue>; LOCAL_STACK_MAX_COUNT],
+}
+
+impl<'tk> FunctionCtx<'tk> {
+    fn new(function: ObjFunction, enclosing: Compiler<'tk>) -> Self {
+        Self {
+            function,
+            enclosing: Box::new(enclosing),
+            upvalues: [const { None }; LOCAL_STACK_MAX_COUNT],
+        }
+    }
+
+    fn add_upvalue(&mut self, to_add: Upvalue) -> Result<u8, String> {
+        for idx in 0..self.function.upvalue_count {
+            if let Some(exist) = &self.upvalues[idx] {
+                if *exist == to_add {
+                    return Ok(idx as _);
+                }
+            }
+        }
+
+        let idx = self.function.upvalue_count;
+        if idx == LOCAL_STACK_MAX_COUNT {
+            return Err("Too many closure variables in function.".to_string());
+        }
+
+        self.upvalues[idx] = Some(to_add);
+        self.function.upvalue_count += 1;
+        return Ok(idx as _);
+    }
+}
+
 const LOCAL_STACK_MAX_COUNT: usize = u8::MAX as usize + 1;
 struct Compiler<'tk> {
     locals: [Option<Local<'tk>>; LOCAL_STACK_MAX_COUNT],
     local_count: usize,
     current_scope: i8,
 
-    function: Option<ObjFunction>,
-    enclosing: Option<Box<Compiler<'tk>>>,
+    functx: Option<FunctionCtx<'tk>>,
 }
 impl<'tk> Compiler<'tk> {
-    fn _new(enclosing: Option<Compiler<'tk>>, function: Option<ObjFunction>) -> Self {
+    fn new() -> Self {
         Self {
             locals: [const { None }; LOCAL_STACK_MAX_COUNT],
             current_scope: 0,
             local_count: 0,
-            function: function,
-            enclosing: enclosing.map(Box::new),
+            functx: None,
         }
     }
 
-    fn new() -> Self {
-        Self::_new(None, None)
-    }
-
-    fn new_with_enclosing(enclosing: Compiler<'tk>, function: ObjFunction) -> Self {
-        Self::_new(Some(enclosing), Some(function))
+    fn new_with_functx(enclosing: Compiler<'tk>, function: ObjFunction) -> Self {
+        Self {
+            locals: [const { None }; LOCAL_STACK_MAX_COUNT],
+            current_scope: 0,
+            local_count: 0,
+            functx: Some(FunctionCtx::new(function, enclosing)),
+        }
     }
 
     fn within_scope(&self) -> bool {
@@ -100,8 +140,20 @@ impl<'tk> Compiler<'tk> {
         return Ok(None);
     }
 
-    fn resolve_upvalue(&self, tk: &Token) -> Option<u8> {
-        todo!()
+    fn resolve_upvalue(&mut self, tk: &Token) -> Result<Option<u8>, String> {
+        let mut upvalue_idx = None;
+
+        if let Some(functx) = &mut self.functx {
+            if let Some(enclosing_local_idx) = functx.enclosing.resolve_local(tk)? {
+                let idx = functx.add_upvalue(Upvalue::Local(enclosing_local_idx))?;
+                upvalue_idx = Some(idx);
+            } else if let Some(enclosing_upvalue_idx) = functx.enclosing.resolve_upvalue(tk)? {
+                let idx = functx.add_upvalue(Upvalue::NonLocal(enclosing_upvalue_idx))?;
+                upvalue_idx = Some(idx);
+            }
+        }
+
+        return Ok(upvalue_idx);
     }
 
     fn declare_local(&mut self, tk: &Token<'tk>) -> Result<(), String> {
@@ -157,18 +209,22 @@ impl<'tk> Compiler<'tk> {
 
     fn begin_parse_function(&mut self, name: Rc<ObjString>) {
         let current = std::mem::replace(self, Compiler::new());
-        *self = Compiler::new_with_enclosing(current, ObjFunction::new(name));
+        *self = Compiler::new_with_functx(current, ObjFunction::new(name));
         self.current_scope += 1; // cause we are in function now
     }
 
-    fn end_parse_function(&mut self, func_arity: usize) -> ObjFunction {
-        let current = std::mem::replace(self, Compiler::new());
-        let mut parsed_function = current
-            .function
-            .expect("should call begin_parse_function to set function first");
+    fn end_parse_function(
+        &mut self,
+        func_arity: usize,
+    ) -> (ObjFunction, [Option<Upvalue>; LOCAL_STACK_MAX_COUNT]) {
+        let functx = std::mem::replace(self, Compiler::new())
+            .functx
+            .expect("should call begin_parse_function to set functx first");
+
+        let mut parsed_function = functx.function;
         parsed_function.arity = func_arity;
-        *self = *current.enclosing.unwrap();
-        return parsed_function;
+        *self = *functx.enclosing;
+        return (parsed_function, functx.upvalues);
     }
 }
 
@@ -246,9 +302,9 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     fn active_chunk(&mut self) -> &mut Chunk {
         return self
             .compiler
-            .function
+            .functx
             .as_mut()
-            .map_or(self.chunk.borrow_mut(), |x| x.chunk.borrow_mut());
+            .map_or(self.chunk.borrow_mut(), |x| x.function.chunk.borrow_mut());
     }
 
     fn emit_byte<T: Into<u8>>(&mut self, byte: T) {
@@ -472,7 +528,7 @@ impl<'code, 'tk> Parser<'code, 'tk> {
     fn return_stmt(&mut self) -> bool {
         let matched = self.match_and_advance(TokenReturn);
         if matched {
-            if self.compiler.function.is_none() {
+            if self.compiler.functx.is_none() {
                 self.error_at(&self.current.clone(), "Can't return from top-level code.");
                 return matched;
             }
@@ -685,17 +741,22 @@ impl<'code, 'tk> Parser<'code, 'tk> {
                 get_op = OpGetLocal;
                 set_op = OpSetLocal;
             }
-            Ok(None) => {
-                if let Some(upvalue_idx) = self.compiler.resolve_upvalue(tk) {
+            Ok(None) => match self.compiler.resolve_upvalue(tk) {
+                Ok(Some(upvalue_idx)) => {
                     idx = upvalue_idx;
                     get_op = OpGetUpvalue;
                     set_op = OpSetUpvalue;
-                } else {
+                }
+                Ok(None) => {
                     idx = self.identifier_constant(tk);
                     get_op = OpGetGlobal;
                     set_op = OpSetGlobal;
                 }
-            }
+                Err(ref msg) => {
+                    self.error_at(tk, msg);
+                    return;
+                }
+            },
             Err(ref msg) => {
                 self.error_at(tk, msg);
                 return;
@@ -823,11 +884,23 @@ impl<'code, 'tk> Parser<'code, 'tk> {
 
             self.emit_byte(OpNil);
             self.emit_byte(OpReturn); // in case user doesn't specify one
-            let func = self.compiler.end_parse_function(func_arity);
+            let (func, upvalues) = self.compiler.end_parse_function(func_arity);
+            let upvalue_count = func.upvalue_count;
             let func = self.heap.allocate_function(func);
-
             let func_idx = self.make_constant(func, &func_name_tk);
             self.emit_bytes(OpClosure, func_idx);
+
+            for upvalue in &upvalues[..upvalue_count] {
+                let upvalue = upvalue.as_ref().unwrap();
+                match upvalue {
+                    Upvalue::Local(idx) => {
+                        self.emit_bytes(*idx, 1);
+                    }
+                    Upvalue::NonLocal(idx) => {
+                        self.emit_bytes(*idx, 0);
+                    }
+                }
+            }
 
             self.define_variable(idx);
         }
