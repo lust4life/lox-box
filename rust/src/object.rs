@@ -80,16 +80,20 @@ pub struct OpenUpvaule {
 }
 
 impl OpenUpvaule {
-    pub fn new(idx: usize, value: Value, next: Option<Rc<RefCell<OpenUpvaule>>>) -> Self {
+    pub fn new(idx: usize, next: Option<Rc<RefCell<OpenUpvaule>>>) -> Self {
         Self {
             idx,
-            upvalue: Rc::new(RefCell::new(value)),
+            upvalue: Rc::new(RefCell::new(Upvalue::OnStack(idx))),
             next,
         }
     }
 }
 
-pub type ObjUpvalue = Rc<RefCell<Value>>;
+pub enum Upvalue {
+    OnStack(usize),
+    OnHeap(Value),
+}
+pub type ObjUpvalue = Rc<RefCell<Upvalue>>;
 
 pub struct ObjClosure {
     pub function: Rc<ObjFunction>,

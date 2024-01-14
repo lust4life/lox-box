@@ -5,6 +5,7 @@ use crate::{
     compiler::{self},
     object::{
         Obj, ObjClosure, ObjFunction, ObjNative, ObjString, ObjType, ObjUpvalue, OpenUpvaule,
+        Upvalue,
     },
     op::OpCode::{self, *},
     table::Table,
@@ -167,8 +168,9 @@ impl CallFrame {
         return self.chunk().get_line(self.pc - 1);
     }
 
-    fn capture_upvalue(&mut self, idx: usize, value: Value) -> ObjUpvalue {
+    fn capture_upvalue(&mut self, idx: usize) -> ObjUpvalue {
         // capture it on the callframe's open_upvalues
+        let idx = self.stack_offset + idx;
 
         let mut previous: Option<Rc<RefCell<OpenUpvaule>>> = None;
         let mut looped_open_upvalue = self.open_upvalues.clone();
@@ -186,11 +188,7 @@ impl CallFrame {
             looped_open_upvalue = inner.next.clone();
         }
 
-        let open_upvalue = Rc::new(RefCell::new(OpenUpvaule::new(
-            idx,
-            value,
-            looped_open_upvalue,
-        )));
+        let open_upvalue = Rc::new(RefCell::new(OpenUpvaule::new(idx, looped_open_upvalue)));
         let created_upvalue = open_upvalue.borrow().upvalue.clone();
         match previous {
             Some(previous) => {
@@ -206,10 +204,6 @@ impl CallFrame {
 
     fn get_upvalue(&mut self, idx: usize) -> ObjUpvalue {
         return self.ty.cast_closure().upvalues[idx].clone();
-    }
-
-    fn set_upvalue(&self, idx: usize, value: Value) {
-        *self.ty.cast_closure().upvalues[idx].borrow_mut() = value;
     }
 }
 
@@ -444,9 +438,7 @@ impl VM {
                         let upvalue_idx = self.read_byte() as usize;
                         let is_local = self.read_byte();
                         let upvalue = if is_local == 1 {
-                            let v =
-                                self.stack[self.current_frame().stack_offset + upvalue_idx].clone();
-                            self.current_frame().capture_upvalue(upvalue_idx, v)
+                            self.current_frame().capture_upvalue(upvalue_idx)
                         } else {
                             self.current_frame().get_upvalue(upvalue_idx)
                         };
@@ -457,13 +449,28 @@ impl VM {
                 }
                 OpGetUpvalue => {
                     let idx = self.read_byte();
-                    let upvalue = self.current_frame().get_upvalue(idx as _).borrow().clone();
+                    let frame = self.current_frame();
+
+                    let upvalue = match *frame.ty.cast_closure().upvalues[idx as usize]
+                        .as_ref()
+                        .borrow()
+                    {
+                        Upvalue::OnStack(idx) => self.stack[idx].clone(),
+                        Upvalue::OnHeap(ref cell_v) => cell_v.clone(),
+                    };
                     self.push(upvalue);
                 }
                 OpSetUpvalue => {
                     let idx = self.read_byte();
                     let value = self.peek(0);
-                    self.current_frame().set_upvalue(idx as _, value);
+                    let frame = self.current_frame();
+                    match *frame.ty.cast_closure().upvalues[idx as usize]
+                        .as_ref()
+                        .borrow_mut()
+                    {
+                        Upvalue::OnStack(idx) => self.stack[idx] = value,
+                        Upvalue::OnHeap(ref mut cell_v) => *cell_v = value,
+                    }
                 }
                 OpCloseUpvalue => {
                     self.close_upvalues();
@@ -558,15 +565,13 @@ impl VM {
     }
 
     fn close_upvalues(&mut self) {
-        let stack_baseline = self.current_frame().stack_offset;
         while let Some(inner) = self.current_frame().open_upvalues.clone() {
-            let inner = inner.borrow();
-            let upvalue_stack_idx = stack_baseline + inner.idx;
-            if upvalue_stack_idx < self.stack_count - 1 {
+            let mut inner = inner.borrow_mut();
+            if inner.idx < self.stack_count - 1 {
                 break;
             }
 
-            *inner.upvalue.borrow_mut() = self.stack[upvalue_stack_idx].clone();
+            *inner.upvalue.borrow_mut() = Upvalue::OnHeap(self.stack[inner.idx].clone());
             self.current_frame().open_upvalues = inner.next.clone();
         }
     }
@@ -581,33 +586,16 @@ mod tests {
     fn xxx() {
         interpret(
             r#"
-            var f;
-            var g;
-            
-            {
-              var local = "local";
-              fun f_() {
-                print local;
-                local = "after f";
-                print local;
+            fun f() {
+                while (true) {
+                  var i = "i";
+                  fun g() { print i; }
+                  return g;
+                }
               }
-              f = f_;
-            
-              fun g_() {
-                print local;
-                local = "after g";
-                print local;
-              }
-              g = g_;
-            }
-            
-            f();
-            // expect: local
-            // expect: after f
-            
-            g();
-            // expect: after f
-            // expect: after g            
+              
+              var h = f();
+              h(); // expect: i
         "#,
         );
     }
