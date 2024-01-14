@@ -124,8 +124,8 @@ impl Table {
         let capacity = self.entries.grow_capacity();
         let mut new_table = Self::with_capacity(capacity);
 
-        for entry in self.entries.iter() {
-            if let Some(entry) = entry {
+        for idx in 0..self.entries.capacity {
+            if let Some(entry) = self.entries.read(idx) {
                 match entry.key {
                     Some(ref key) => {
                         new_table.set(key.clone(), entry.value.clone(), false);
